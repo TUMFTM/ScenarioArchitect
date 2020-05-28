@@ -52,7 +52,9 @@ specified location.
 * Scenario pickle (`*.sas`): Pickle file, which can be directly imported by the GUI in order to adjust any
 parameters with the GUI.
 
-Use the button `Import Scen.` in order to import a stored scene pickle (`*.sas`).
+Use the button `Import Scen.` in order to import a stored scene pickle (`*.sas`). Exemplary scenarios generated with the
+Scenario Architect can be found in the folder [sample_files/scenario_1_vehicle](sample_files/scenario_1_vehicle) for 
+the ego vehicle only and [sample_files/scenario_n_vehicle](sample_files/scenario_n_vehicle) for multiple vehicles.
 
 The button `Import Track` allows to import stored track information (bounds). This function
 supports appropriate `*.csv` files (delimiter ';' or ',' - detected automatically). When importing a file, the user can
