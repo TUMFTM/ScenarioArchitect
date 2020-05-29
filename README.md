@@ -36,14 +36,25 @@ Use the entity selector (highlighted red in Figure 1) to select a entity to be d
 Afterwards, use single clicks in the main axis to draw any desired shape. End editing a entity by double-clicking or
 selecting any other entity in the entity selector. In order to remove all existing points of a certain entity, first
 select the entry in the entity selector and then click the button `Reset Entity`.\
-![Picture Entity Selector](docs/EntitySelector.png)
+![Picture entity selector](docs/EntitySelector.png)
 _Figure 1: Scenario GUI window._
+
+
+Use these basic manipulation techniques to establish track bounds (left and right) as well as vehicle paths. A track is
+defined by a left and right bound, each holding pairwise coordinates (indicated by a dashed line between them). The
+overall procedure is demonstrated in the animation below.\
+\
+![Gif path and bound creation](docs/BasicSetup.gif)
+_Animation 1: Path and bound creation._
+
 
 When hovering above an 'x'-tick of the highlighted data-points (selected via the entity selector) in the main window, 
 you can left-click and drag the point to move it to a new position or right-click it to remove the point from the path.
+The procedures are visualized in the animation below.\
+\
+![Gif path modification](docs/EditPath.gif)
+_Animation 2: Path modification - point dragging first, point deletion second._
 
-Use these basic manipulation techniques to establish track bounds (left and right) as well as vehicle paths. A track is
-defined by a left and right bound, each holding pairwise coordinates (indicated by a dashed line between them).
 
 ### Import and Export
 The drawn scenario can be exported using the button `Export Scen.`. This process will generate two files at the
@@ -78,16 +89,24 @@ on the bottom of the 'Scenario GUI' window in order to zoom further out.
 
 ### Temporal Information
 Once you start drawing any path for one of the vehicles, the temporal information is automatically generated in
-parallel. Thereby, the velocity profile is calculated in a way to drive as fast as possible on the generated path. Any
-desired modifications can be inserted manually.
+parallel (see Animation 1). Thereby, the velocity profile is calculated in a way to drive as fast as possible on the
+generated path. Any desired modifications can be inserted manually.
+
+When moving the cursor above the temporal window, the corresponding vehicle poses are highlighted in the main window,
+as shown in the animation below.\
+\
+![Gif temporal visualization](docs/VisualVelocity.gif)
+_Animation 3: Visualize temporal states._
 
 In order to modify the velocity of a certain vehicle manually, first select the vehicle in the 'Scenario GUI' window.
 The corresponding temporal plots in the 'Temporal Plot' window will be highlighted with a bold stroke. Furthermore, 
 the spacial velocity profile will hold black dots that can be dragged up and down with the mouse in order to alter the 
 velocity profile. When holding and dragging a point sideways it is possible to batch process multiple points in a linear
-manner. The velocity and acceleration profile is updated, once the mouse button is released.\
-![Picture Velocity Modification](docs/VelocityModification.png)
-_Figure 2: Temporal Plot window._
+manner. The velocity and acceleration profile is updated, once the mouse button is released. This process is
+demonstrated in the animation below.\
+\
+![Gif velocity modification](docs/EditVel.gif)
+_Animation 4: Velocity profile manipulation._
 
 Use the checkboxes 'All Poses' and 'Add Text' in the 'Scenario GUI' (Figure 1) to display poses of the vehicles with a
 fixed temporal spacing (default: every 1s). Thereby, the 'Add Text' checkbox toggles the text description next to every
@@ -168,7 +187,7 @@ If you find our work useful in your research, please consider citing:
 ```
 @inproceedings{stahl2020a,
   title = {An Open-Source Scenario Architect for Autonomous Vehicles},
-  booktitle = {2020 {{Fifteenth International Conference}} on {{Ecological Vehicles}} and {{Renewable Energies}} ({{EVER}})},
+  booktitle = {2020 Fifteenth International Conference on Ecological Vehicles and Renewable Energies (EVER)},
   author = {Stahl, Tim and Betz, Johannes},
   year = {2020}
 }
