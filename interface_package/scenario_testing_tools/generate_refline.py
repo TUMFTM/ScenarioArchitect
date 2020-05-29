@@ -111,7 +111,7 @@ def generate_refline(bound_l: np.ndarray,
 
     # get intersection points with bounds (in order to determine track-width)
     intersects_left, intersects_right = get_intersect_points(track_polygon=track_polygon,
-                                                             input_r=output_rl,
+                                                             input_coord=output_rl,
                                                              v_normal=v_normal)
 
     # calculate track-width based on intersection points
