@@ -13,7 +13,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='scenario-testing-tools',
-    version='0.53',
+    version='0.54',
     author="Tim Stahl",
     author_email="stahl@ftm.mw.tum.de",
     description="Useful functions used together with a (currently private) scenario generation tool.",
