@@ -1,6 +1,6 @@
 numpy==1.18.1
 matplotlib==3.0.3
 scikit-learn==0.22.1
-scenario-testing-tools==0.53
+scenario-testing-tools==0.55
 trajectory-planning-helpers==0.64
 flake8==3.7.9

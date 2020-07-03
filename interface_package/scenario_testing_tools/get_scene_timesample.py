@@ -15,7 +15,8 @@ data file, linear interpolation is used to generate the desired instance between
 
 
 def get_scene_timesample(file_path: str,
-                         t_in: float) -> tuple:
+                         t_in: float,
+                         time_f: np.ndarray = None) -> tuple:
     """
     Method extracting scenario data for a given time instance. If the given time step is not present in the data file,
     linear interpolation is used to generate the desired instance between the neighboring time instances.
@@ -24,6 +25,7 @@ def get_scene_timesample(file_path: str,
     :param t_in:            two options:
                             * float number holding the time-stamp to be extracted [linear interp. between neighb. pts]
                             * int number holding the number of the data reading to be extracted from the file
+    :param time_f:          time-stamps from file (for faster exec.: load once and hand to function on next iter)
     :returns (time,         time stamp of the returned sample
               pos,          position of the ego vehicle (list holding x and y)
               heading,      heading of the ego vehicle (in the global frame)
@@ -32,11 +34,14 @@ def get_scene_timesample(file_path: str,
               acc,          acceleration of the ego vehicle (in the direction of the heading)
               ego_traj,     planned ego trajectory starting at the current position (x, y, heading, curv., vel, acc)
               ego_traj_em,  (if available, else ego_traj) planned emergency ego traj (x, y, heading, curv., vel, acc)
-              object_array) information about the vehicles in the scene (list of lists, each object holding an ID-string
+              object_array, information about the vehicles in the scene (list of lists, each object holding an ID-string
                             and a list holding [x, y, psi, obj_radius, vel])
+              time_f)       time-stamps from file (for faster exec.: store this value and hand to function on next iter)
     """
     # -- get timestamps ------------------------------------------------------------------------------------------------
-    time_f = np.genfromtxt(file_path, delimiter=';', skip_header=2, names=True)['time']
+    if time_f is None:
+        # load time-stamps from file, if not provided
+        time_f = np.genfromtxt(file_path, delimiter=';', skip_header=2, names=True)['time']
 
     if type(t_in) is int:
         idx = t_in
@@ -142,7 +147,7 @@ def get_scene_timesample(file_path: str,
                                                              fp_array=np.array([veh_prev[1], veh_next[1]]),
                                                              idx_col_heading=[2]))])
 
-    return time, pos, heading, curv, vel, acc, ego_traj, ego_traj_em, object_array
+    return time, pos, heading, curv, vel, acc, ego_traj, ego_traj_em, object_array, time_f
 
 
 def interp_1d(x: float,

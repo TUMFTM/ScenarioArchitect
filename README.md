@@ -169,7 +169,7 @@ in any other repository, simply install the package with the command
 usual, e.g.:\
 `import scenario_testing_tools as stt`\
 \
-`time, pos, heading, curv, vel, acc, ego_traj, object_array = 
+`time, pos, heading, curv, vel, acc, ego_traj, object_array, time_f = 
 stt.get_scene_timesample.get_scene_timesample(file_path=<TODO>, t_in=<TODO>)`\
 \
 `bound_l, bound_r = stt.get_scene_track.get_scene_track(file_path=<TODO>)`\
