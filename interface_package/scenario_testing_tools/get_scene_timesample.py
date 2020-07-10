@@ -77,7 +77,7 @@ def get_scene_timesample(file_path: str,
     # check object_array for propper format
     object_array_prev = json.loads(line_prev[header.index("object_array")])
 
-    if len(object_array_prev[0][1]) != 6:
+    if object_array_prev and len(object_array_prev[0][1]) != 6:
         raise ValueError("Provided scenario file does not hold the expected amount of object parameters. Check for "
                          "version compliance (update scenario_testing_tools and scenario-architect to newest version) "
                          "and load + export the relevant scenarios again.")
