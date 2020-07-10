@@ -34,8 +34,8 @@ def get_scene_timesample(file_path: str,
               acc,          acceleration of the ego vehicle (in the direction of the heading)
               ego_traj,     planned ego trajectory starting at the current position (x, y, heading, curv., vel, acc)
               ego_traj_em,  (if available, else ego_traj) planned emergency ego traj (x, y, heading, curv., vel, acc)
-              object_array, information about the vehicles in the scene (list of lists, each object holding an ID-string
-                            and a list holding [x, y, psi, obj_radius, vel])
+              object_array, information about the vehicles in the scene (dict of dicts, each key being the object id and
+                            every value holding the following keys ['X', 'Y', 'psi', 'vel', 'length', 'width'])
               time_f)       time-stamps from file (for faster exec.: store this value and hand to function on next iter)
     """
     # -- get timestamps ------------------------------------------------------------------------------------------------
@@ -74,6 +74,14 @@ def get_scene_timesample(file_path: str,
                 line_next = line.split(";")
                 break
 
+    # check object_array for propper format
+    object_array_prev = json.loads(line_prev[header.index("object_array")])
+
+    if len(object_array_prev[0][1]) != 6:
+        raise ValueError("Provided scenario file does not hold the expected amount of object parameters. Check for "
+                         "version compliance (update scenario_testing_tools and scenario-architect to newest version) "
+                         "and load + export the relevant scenarios again.")
+
     # retrieve or interpolate data from file
     if type(t_in) is int or time_f[idx] == t_in or line_next is None:
         # -- extract values at current position ------------------------------------------------------------------------
@@ -88,7 +96,16 @@ def get_scene_timesample(file_path: str,
             ego_traj_em = np.array(json.loads(line_prev[header.index("ego_traj_em")]))
         else:
             ego_traj_em = ego_traj
-        object_array = json.loads(line_prev[header.index("object_array")])
+
+        object_list = dict()
+        for veh in object_array_prev:
+            object_list[veh[0]] = {'X': veh[1][0],
+                                   'Y': veh[1][1],
+                                   'psi': veh[1][2],
+                                   'vel': veh[1][3],
+                                   'length': veh[1][4],
+                                   'width': veh[1][5]}
+
     else:
         # -- interpolate between timestamps ----------------------------------------------------------------------------
         time = np.interp(t_in, time_f[idx:idx + 2], time_f[idx:idx + 2])
@@ -137,17 +154,23 @@ def get_scene_timesample(file_path: str,
         else:
             ego_traj_em = ego_traj
 
-        object_array_prev = json.loads(line_prev[header.index("object_array")])
         object_array_next = json.loads(line_next[header.index("object_array")])
 
-        object_array = []
+        object_list = dict()
         for veh_prev, veh_next in zip(object_array_prev, object_array_next):
-            object_array.append([veh_prev[0], list(interp_1d(x=t_in,
-                                                             xp=time_f[idx:idx + 2],
-                                                             fp_array=np.array([veh_prev[1], veh_next[1]]),
-                                                             idx_col_heading=[2]))])
+            interp_obj = interp_1d(x=t_in,
+                                   xp=time_f[idx:idx + 2],
+                                   fp_array=np.array([veh_prev[1], veh_next[1]]),
+                                   idx_col_heading=[2])
 
-    return time, pos, heading, curv, vel, acc, ego_traj, ego_traj_em, object_array, time_f
+            object_list[veh_prev[0]] = {'X': interp_obj[0],
+                                        'Y': interp_obj[1],
+                                        'psi': interp_obj[2],
+                                        'vel': interp_obj[3],
+                                        'length': interp_obj[4],
+                                        'width': interp_obj[5]}
+
+    return time, pos, heading, curv, vel, acc, ego_traj, ego_traj_em, object_list, time_f
 
 
 def interp_1d(x: float,
@@ -178,7 +201,7 @@ def interp_1d(x: float,
 # -- main --------------------------------------------------------------------------------------------------------------
 if __name__ == "__main__":
     scenario_path = (os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-                     + "/sample_files/scenario_n_vehicle/modena_overtake_tight.scn")
+                     + "/sample_files/scenario_n_vehicle/modena_T3_T4_overtake_opp.scn")
     z = get_scene_timesample(file_path=scenario_path,
                              t_in=4.0)
     print(z)

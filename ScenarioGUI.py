@@ -865,9 +865,9 @@ class ScenarioArchitect:
                     obj_array.append([obj, [veh_data[obj][i, 0],
                                             veh_data[obj][i, 1],
                                             veh_data[obj][i, 2],
-                                            max(self.__config.getfloat('VEHICLE', 'veh_length'),
-                                                self.__config.getfloat('VEHICLE', 'veh_width')) / 2,
-                                            veh_data[obj][i, 4]]])
+                                            veh_data[obj][i, 4],
+                                            self.__config.getfloat('VEHICLE', 'veh_length'),
+                                            self.__config.getfloat('VEHICLE', 'veh_width')]])
 
             # calculate (simple) emergency trajectory
             ego_traj_em = helper_funcs.src.calc_brake_emergency.calc_brake_emergency(traj=ego_traj,

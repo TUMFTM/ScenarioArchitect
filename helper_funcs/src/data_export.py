@@ -51,7 +51,7 @@ def write_timestamp(file_path: str,
     - ego_traj:     planned ego-trajectory starting at the current position (x, y, heading, curv, vel, acc)
     - ego_traj_em:  planned emergency-ego-trajectory starting at the current position (x, y, heading, curv, vel, acc)
     - object_array: information about the vehicles in the scene (list of lists, each object holding an ID-string and a
-                    list holding [x, y, heading, radius, vel])
+                    list holding [x, y, heading, vel, length, width])
     """
 
     # write line to file (order should match with the "HEADER_STR")
