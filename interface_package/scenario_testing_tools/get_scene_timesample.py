@@ -1,6 +1,8 @@
 import numpy as np
 import os
 import json
+import zipfile
+import shutil
 import scenario_testing_tools
 import warnings
 
@@ -21,7 +23,7 @@ def get_scene_timesample(file_path: str,
     Method extracting scenario data for a given time instance. If the given time step is not present in the data file,
     linear interpolation is used to generate the desired instance between the neighboring time instances.
 
-    :param file_path:       string holding the path to the scene data file
+    :param file_path:       string holding path to a Scenario-Architect archive ('*.saa') or a scene data file ('*.scn')
     :param t_in:            two options:
                             * float number holding the time-stamp to be extracted [linear interp. between neighb. pts]
                             * int number holding the number of the data reading to be extracted from the file
@@ -38,10 +40,26 @@ def get_scene_timesample(file_path: str,
                             every value holding the following keys ['X', 'Y', 'psi', 'vel', 'length', 'width'])
               time_f)       time-stamps from file (for faster exec.: store this value and hand to function on next iter)
     """
+
+    if not (".saa" in file_path or ".scn" in file_path):
+        raise ValueError("Unsupported file! Make sure to provide a Scenario-Architect archive ('*.saa') or a scene data"
+                         " file ('*.scn').")
+
     # -- get timestamps ------------------------------------------------------------------------------------------------
     if time_f is None:
+        # if archive, extract file
+        if ".saa" in file_path:
+            with zipfile.ZipFile(file_path) as zipObj:
+                with zipObj.open(os.path.basename(file_path).replace('.saa', '.scn')) as zf, \
+                        open(file_path.replace('.saa', '.scn'), 'wb') as f:
+                    shutil.copyfileobj(zf, f)
+
         # load time-stamps from file, if not provided
-        time_f = np.genfromtxt(file_path, delimiter=';', skip_header=2, names=True)['time']
+        time_f = np.genfromtxt(file_path.replace('.saa', '.scn'), delimiter=';', skip_header=2, names=True)['time']
+
+        # if it was in archive, remove extracted file after import
+        if ".saa" in file_path:
+            os.remove(file_path.replace('.saa', '.scn'))
 
     if type(t_in) is int:
         idx = t_in
@@ -61,20 +79,35 @@ def get_scene_timesample(file_path: str,
     header = None
     line_prev = None
     line_next = None
-    with open(file_path) as fp:
-        for i, line in enumerate(fp):
-            if i == 2:
-                line = line.replace("\n", "")
-                header = line.split(";")
-            elif i == idx + 3:
-                line = line.replace("\n", "")
-                line_prev = line.split(";")
-            elif i == idx + 4:
-                line = line.replace("\n", "")
-                line_next = line.split(";")
-                break
 
-    # check object_array for propper format
+    # if archive, extract relevant file
+    if ".saa" in file_path:
+        # from zip file
+        f = zipfile.ZipFile(file_path).open(os.path.basename(file_path).replace('.saa', '.scn'))
+
+    else:
+        # directly from file
+        f = open(file_path, 'rb')
+
+    i = 0
+    while True:
+        line = f.readline().decode()
+        if i == 2:
+            line = line.replace("\n", "").replace("\r", "")
+            header = line.split(";")
+        elif i == idx + 3:
+            line = line.replace("\n", "").replace("\r", "")
+            line_prev = line.split(";")
+        elif i == idx + 4:
+            line = line.replace("\n", "").replace("\r", "")
+            line_next = line.split(";")
+            break
+
+        i += 1
+
+    f.close()
+
+    # check object_array for proper format
     object_array_prev = json.loads(line_prev[header.index("object_array")])
 
     if object_array_prev and len(object_array_prev[0][1]) != 6:
@@ -201,7 +234,7 @@ def interp_1d(x: float,
 # -- main --------------------------------------------------------------------------------------------------------------
 if __name__ == "__main__":
     scenario_path = (os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-                     + "/sample_files/scenario_n_vehicle/modena_T3_T4_overtake_opp.scn")
+                     + "/sample_files/scenario_n_vehicle/modena_T3_T4_overtake_opp.saa")
     z = get_scene_timesample(file_path=scenario_path,
                              t_in=4.0)
     print(z)

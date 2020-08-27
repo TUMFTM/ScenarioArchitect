@@ -8,6 +8,7 @@ import pickle
 import pkg_resources
 import configparser
 import numpy as np
+import zipfile
 import tkinter as tk
 from tkinter import messagebox, filedialog, simpledialog
 
@@ -194,6 +195,9 @@ class ScenarioArchitect:
         self.__acc_ax_cursor, = self.__axes_a_t.plot([0.0], [0.0], lw=1, color='r', zorder=999)
         self.__cursor_last_t = 0.0
 
+        # store file-path (if saving again, suggest same name)
+        self.__load_file = load_file
+
         # --------------------------------------------------------------------------------------------------------------
         # - DEFINE GUI ELEMENTS (BUTTONS, SLIDERS, ...) ----------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
@@ -227,23 +231,23 @@ class ScenarioArchitect:
                                   hovercolor='0.975')
         button_reset_ent.on_clicked(self.reset_ent)
 
+        # Specify import track button
+        button_import_track = Button(self.__fig_main.add_axes([0.8, 0.45, 0.15, 0.04]), 'Import Track',
+                                     color=self.__config.get('VISUAL', 'btn_color'),
+                                     hovercolor='0.975')
+        button_import_track.on_clicked(self.load_track)
+
         # Specify import button
-        button_import = Button(self.__fig_main.add_axes([0.8, 0.45, 0.15, 0.04]), 'Import Scen.',
+        button_import = Button(self.__fig_main.add_axes([0.8, 0.4, 0.15, 0.04]), 'Import Scen.',
                                color=self.__config.get('VISUAL', 'btn_color'),
                                hovercolor='0.975')
         button_import.on_clicked(self.load_pckl)
 
         # Specify export button
-        button_export = Button(self.__fig_main.add_axes([0.8, 0.4, 0.15, 0.04]), 'Export Scen.',
+        button_export = Button(self.__fig_main.add_axes([0.8, 0.35, 0.15, 0.04]), 'Export Scen.',
                                color=self.__config.get('VISUAL', 'btn_color'),
                                hovercolor='0.975')
         button_export.on_clicked(self.export_to_file)
-
-        # Specify import track button
-        button_import_track = Button(self.__fig_main.add_axes([0.8, 0.35, 0.15, 0.04]), 'Import Track',
-                                     color=self.__config.get('VISUAL', 'btn_color'),
-                                     hovercolor='0.975')
-        button_import_track.on_clicked(self.load_track)
 
         # Plot all vehicles checkbox
         check_all_veh = CheckButtons(self.__fig_main.add_axes([0.8, 0.24, 0.15, 0.1]), ['All Poses', 'Add Text'],
@@ -840,13 +844,22 @@ class ScenarioArchitect:
         # -- get filename --
         root = tk.Tk()
         root.withdraw()
-        file_path = filedialog.asksaveasfile(defaultextension=".scn",
-                                             filetypes=(("Scene-File", "*.scn"), ("All Files", "*.*")))
+
+        if self.__load_file is not None:
+            file_path = filedialog.asksaveasfile(defaultextension=".saa",
+                                                 initialdir=os.path.dirname(self.__load_file),
+                                                 initialfile=os.path.splitext(os.path.basename(self.__load_file))[0],
+                                                 filetypes=(("Scenario-Architect Archive", "*.saa"),
+                                                            ("All Files", "*.*")))
+        else:
+            file_path = filedialog.asksaveasfile(defaultextension=".saa",
+                                                 filetypes=(("Scenario-Architect Archive", "*.saa"),
+                                                            ("All Files", "*.*")))
         if file_path is None:
             raise Warning('File export was aborted!')
 
         # -- init export-file --
-        helper_funcs.src.data_export.init_exportfile(file_path=file_path.name,
+        helper_funcs.src.data_export.init_exportfile(file_path=file_path.name.replace('.saa', '.scn'),
                                                      bound_l=self.__ent_cont[0].data_coord,
                                                      bound_r=self.__ent_cont[1].data_coord)
 
@@ -874,7 +887,7 @@ class ScenarioArchitect:
                                                                                      ggv=self.__ggv)
 
             # write to file
-            helper_funcs.src.data_export.write_timestamp(file_path=file_path.name,
+            helper_funcs.src.data_export.write_timestamp(file_path=file_path.name.replace('.saa', '.scn'),
                                                          time=i * self.__config.getfloat('FILE_EXPORT',
                                                                                          'export_time_increment'),
                                                          pos=veh_data['veh_1'][i, 0:2],
@@ -887,7 +900,37 @@ class ScenarioArchitect:
                                                          object_array=obj_array)
 
         # -- store pickle file in order to load the scenario for further edits --
-        self.save_pckl(file_path=file_path.name.replace('.scn', '.sas'))
+        self.save_pckl(file_path=file_path.name.replace('.saa', '.sas'))
+
+        # -- store vehicle parameters --
+        np.savetxt(fname=file_path.name.replace('.saa', '_ggv.csv'),
+                   X=self.__ggv,
+                   delimiter=', ',
+                   fmt='%.1f',
+                   header="v_mps, ax_max_mps2, ay_max_mps2")
+        np.savetxt(fname=file_path.name.replace('.saa', '_ax_max_machines.csv'),
+                   X=self.__ax_max_machines,
+                   delimiter=', ',
+                   fmt='%.1f',
+                   header="v_mps, ax_max_machines_mps2")
+
+        # -- zip all files to one container --
+        with zipfile.ZipFile(file_path.name, 'w') as zipObj:
+            # Add multiple files to the zip
+            zipObj.write(file_path.name.replace('.saa', '.scn'),
+                         os.path.basename(file_path.name.replace('.saa', '.scn')))
+            zipObj.write(file_path.name.replace('.saa', '.sas'),
+                         os.path.basename(file_path.name.replace('.saa', '.sas')))
+            zipObj.write(file_path.name.replace('.saa', '_ggv.csv'),
+                         os.path.basename(file_path.name.replace('.saa', '_ggv.csv')))
+            zipObj.write(file_path.name.replace('.saa', '_ax_max_machines.csv'),
+                         os.path.basename(file_path.name.replace('.saa', '_ax_max_machines.csv')))
+
+        # -- cleanup remaining (source) files --
+        os.remove(file_path.name.replace('.saa', '.scn'))
+        os.remove(file_path.name.replace('.saa', '.sas'))
+        os.remove(file_path.name.replace('.saa', '_ggv.csv'))
+        os.remove(file_path.name.replace('.saa', '_ax_max_machines.csv'))
 
     def load_pckl(self,
                   _,
@@ -901,17 +944,30 @@ class ScenarioArchitect:
         if file_path is None:
             root = tk.Tk()
             root.withdraw()
-            file_path = filedialog.askopenfilename(defaultextension=".sas",
-                                                   filetypes=(("Scene-File", "*.sas"), ("All Files", "*.*")))
+            file_path = filedialog.askopenfilename(defaultextension=".saa",
+                                                   filetypes=(("Scenario-Architect Archive", "*.saa"),
+                                                              ("Scenario-Architect Source", "*.sas"),
+                                                              ("All Files", "*.*")))
 
-        if ".sas" not in file_path:
-            simpledialog.messagebox.showinfo(title="Unsupported file type",
-                                             message="Please make sure to provide a scene file of type '*.sas'!")
+        if file_path != '':
+            if not (".saa" in file_path or ".sas" in file_path):
+                simpledialog.messagebox.showinfo(title="Unsupported file type",
+                                                 message="Please make sure to provide a Scenario-Architect archive "
+                                                         "('*.saa') or a Scenario-Architect source file ('*.sas').")
 
-        elif file_path != '':
-            f = open(file_path, 'rb')
-            imp_container = pickle.load(f)
-            f.close()
+            # store path (in case of saving, the same path is suggested)
+            self.__load_file = file_path
+
+            # load pickle
+            if ".saa" in file_path:
+                # from zip file
+                with zipfile.ZipFile(file_path) as zipObj:
+                    with zipObj.open(os.path.basename(file_path).replace('.saa', '.sas')) as f:
+                        imp_container = pickle.load(f)
+            else:
+                # directly from file
+                with open(file_path, 'rb') as f:
+                    imp_container = pickle.load(f)
 
             # sort imported data into corresponding class variables (if existing update, else create)
             for key in imp_container[0].keys():
@@ -950,10 +1006,30 @@ class ScenarioArchitect:
 
             # protect all velocity profiles
             for obj in self.__ent_cont:
-                if obj.TYPE_VEHICLE:
+                if obj.TYPE_VEHICLE and obj.data_vel_coord is not None:
                     self.__vel_mod_protect[obj.id] = True
 
             self.update_plot(force_update=True)
+
+            # load veh-params
+            if ".saa" in file_path:
+                # load vehicle parameters
+                ggv, ax_max_mach = scenario_testing_tools.get_scene_veh_param.get_scene_veh_param(file_path=file_path)
+
+                # compare to parameters loaded on init
+                matching = np.array_equal(ggv, self.__ggv) and np.array_equal(ax_max_mach, self.__ax_max_machines)
+
+                # if differing, ask user which ones to use
+                if not matching:
+                    answer = messagebox.askyesno("Load vehicle parameters",
+                                                 "The loaded Scenario-Architect archive holds stored vehicle parameters"
+                                                 " (ggv and machine limits) differing from the local ones (in the "
+                                                 "repository files [/params/veh_dyn_info] of the Scenario GUI).\n\n"
+                                                 "Do you want to use the loaded parameters instead of the local ones?")
+
+                    if answer:
+                        self.__ggv = ggv
+                        self.__ax_max_machines = ax_max_mach
 
     def save_pckl(self,
                   file_path: str) -> None:

@@ -3,3 +3,4 @@ import scenario_testing_tools.get_scene_timesample
 import scenario_testing_tools.get_scene_track
 import scenario_testing_tools.interp_heading
 import scenario_testing_tools.get_scene_ego_traj
+import scenario_testing_tools.get_scene_veh_param

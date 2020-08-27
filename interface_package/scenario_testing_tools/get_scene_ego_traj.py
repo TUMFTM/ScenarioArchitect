@@ -1,4 +1,6 @@
 import numpy as np
+import shutil
+import zipfile
 import json
 import os
 
@@ -16,7 +18,7 @@ def get_scene_ego_traj(file_path: str,
     """
     Method extracting the ego-trajectory for a given scenario file (whole duration).
 
-    :param file_path:   string holding the path to the scene data file
+    :param file_path:   string holding the path to the scene data file ('*.scn') or Scenario-Architect archive ('*.saa')
     :param append_plan: if 'True': return not only passed poses, but also append planned ego-traj. from last time-stamp
     :returns (time,     time stamps along the trajectory
               x,        x-coordinates along the time-stamps of the ego vehicle
@@ -27,8 +29,19 @@ def get_scene_ego_traj(file_path: str,
               acc)      acceleration of the ego vehicle at the position of each time-stamp
     """
 
+    if not (".saa" in file_path or ".scn" in file_path):
+        raise ValueError("Unsupported file! Make sure to provide a Scenario-Architect archive ('*.saa') or a scene data"
+                         " file ('*.scn').")
+
+    # if archive, extract relevant file
+    if ".saa" in file_path:
+        with zipfile.ZipFile(file_path) as zipObj:
+            with zipObj.open(os.path.basename(file_path).replace('.saa', '.scn')) as zf,\
+                    open(file_path.replace('.saa', '.scn'), 'wb') as f:
+                shutil.copyfileobj(zf, f)
+
     # retrieve data from file
-    data = np.genfromtxt(fname=file_path,
+    data = np.genfromtxt(fname=file_path.replace('.saa', '.scn'),
                          delimiter=";",
                          names=True,
                          skip_header=2,
@@ -36,7 +49,7 @@ def get_scene_ego_traj(file_path: str,
 
     if append_plan:
         # get ego-trajectory from last time stamp (since 'x' and 'y' only holds last poses)
-        with open(file_path) as file:
+        with open(file_path.replace('.saa', '.scn')) as file:
             # get to top of file (1st line)
             file.seek(0)
 
@@ -77,12 +90,16 @@ def get_scene_ego_traj(file_path: str,
         vel = data['vel']
         acc = data['acc']
 
+    # if it was in archive, remove extracted file after import
+    if ".saa" in file_path:
+        os.remove(file_path.replace('.saa', '.scn'))
+
     return time, x, y, heading, curv, vel, acc
 
 
 # -- main --------------------------------------------------------------------------------------------------------------
 if __name__ == "__main__":
     scenario_path = (os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-                     + "/sample_files/scenario_n_vehicle/modena_T3_T4_overtake_opp.scn")
+                     + "/sample_files/scenario_n_vehicle/modena_T3_T4_overtake_opp.saa")
     z = get_scene_ego_traj(file_path=scenario_path)
     print(z)

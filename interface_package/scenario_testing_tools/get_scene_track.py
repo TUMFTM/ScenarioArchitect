@@ -1,5 +1,7 @@
 import numpy as np
 import json
+import zipfile
+import os
 from matplotlib import pyplot
 
 """
@@ -16,24 +18,39 @@ def get_scene_track(file_path: str) -> tuple:
     """
     Method extracting the track bounds from a scene file.
 
-    :param file_path:    string holding the path to the scene data file
+    :param file_path:    string holding path to a Scenario-Architect archive ('*.saa') or a scene data file ('*.scn')
     :returns (bound_l,   coordinates of the tracks bounds left
               bound_r)   coordinates of the tracks bounds right
     """
 
+    if not (".saa" in file_path or ".scn" in file_path):
+        raise ValueError("Unsupported file! Make sure to provide a Scenario-Architect archive ('*.saa') or a scene data"
+                         " file ('*.scn').")
+
+    # if archive, extract relevant file
+    if ".saa" in file_path:
+        # from zip file
+        f = zipfile.ZipFile(file_path).open(os.path.basename(file_path).replace('.saa', '.scn'))
+
+    else:
+        # directly from file
+        f = open(file_path, 'rb')
+
     # -- read relevant lines from file ---------------------------------------------------------------------------------
     bound_l = None
     bound_r = None
-    with open(file_path) as fp:
-        for i, line in enumerate(fp):
-            if 'bound_l' in line:
-                line = line.replace("# bound_l:", "")
-                bound_l = np.array(json.loads(line))
-            elif 'bound_r' in line:
-                line = line.replace("# bound_r:", "")
-                bound_r = np.array(json.loads(line))
-            else:
-                break
+    while True:
+        line = f.readline().decode()
+        if 'bound_l' in line:
+            line = line.replace("# bound_l:", "")
+            bound_l = np.array(json.loads(line))
+        elif 'bound_r' in line:
+            line = line.replace("# bound_r:", "")
+            bound_r = np.array(json.loads(line))
+        else:
+            break
+
+    f.close()
 
     if bound_l is None or bound_r is None:
         raise ValueError("Something went wrong, while extracting the bound data from the provided file! Check if the"
@@ -110,7 +127,11 @@ def get_scene_occupancy(bound_l: np.ndarray,
 
 # -- main --------------------------------------------------------------------------------------------------------------
 if __name__ == "__main__":
-    pass
+    scenario_path = (os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+                     + "/sample_files/scenario_n_vehicle/modena_T3_T4_overtake_opp.saa")
+    z = get_scene_track(file_path=scenario_path)
+    print(z)
+
     # z = get_scene_occupancy(bound_l=,
     #                         bound_r=,
     #                         x_range=(0.0, 100.0),
