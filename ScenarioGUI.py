@@ -88,6 +88,7 @@ class ScenarioArchitect:
 
         self.__color_dict = json.loads(self.__config.get('VISUAL', 'color_dict'))
         self.__keep_veh_plot = self.__config.getboolean('VISUAL', 'keep_veh_plot')
+        self.__import_track_shift = self.__config.getboolean('TRACK_IMPORT', 'shift_track')
 
         # --------------------------------------------------------------------------------------------------------------
         # - INIT PLOTS -------------------------------------------------------------------------------------------------
@@ -261,10 +262,10 @@ class ScenarioArchitect:
         button_plt_wndw.on_clicked(self.open_plot_window)
 
         # Scaling reset button
-        button = Button(self.__fig_main.add_axes([0.8, 0.02, 0.1, 0.04]), 'Reset',
-                        color=self.__config.get('VISUAL', 'btn_color'),
-                        hovercolor='0.975')
-        button.on_clicked(self.reset)
+        self.__button_reset = Button(self.__fig_main.add_axes([0.8, 0.02, 0.1, 0.04]), 'Reset',
+                                     color=self.__config.get('VISUAL', 'btn_color'),
+                                     hovercolor='0.975')
+        self.__button_reset_cid = self.__button_reset.on_clicked(self.reset)
 
         # Scaling slider
         self.__sld_x_axis = Slider(self.__fig_main.add_axes([0.1, 0.02, 0.6, 0.03],
@@ -274,7 +275,7 @@ class ScenarioArchitect:
                                    valmax=self.__config.getfloat('VISUAL', 'max_x_scale'),
                                    valinit=self.__config.getfloat('VISUAL', 'default_x_scale'),
                                    valstep=self.__config.getfloat('VISUAL', 'delta_xy'))
-        self.__sld_x_axis.on_changed(self.change_ratio)
+        self.__sld_x_axis_cid = self.__sld_x_axis.on_changed(self.change_ratio)
 
         # --------------------------------------------------------------------------------------------------------------
         # - INIT VARIABLES AND ENTITIES --------------------------------------------------------------------------------
@@ -1189,8 +1190,12 @@ class ScenarioArchitect:
                 bound_r = np.vstack((bound_r[idx_s:-1, :], bound_r[0:idx_e, :]))
 
             # calculate shift (base scenario around origin)
-            x_shift = min(min(bound_l[:, 0]), min(bound_r[:, 0])) - 1.0
-            y_shift = min(min(bound_l[:, 1]), min(bound_r[:, 1])) - 1.0
+            if self.__import_track_shift:
+                x_shift = min(min(bound_l[:, 0]), min(bound_r[:, 0])) - 1.0
+                y_shift = min(min(bound_l[:, 1]), min(bound_r[:, 1])) - 1.0
+            else:
+                x_shift = 0.0
+                y_shift = 0.0
 
             # sort imported data into class variables
             self.__ent_cont[0].data_coord = bound_l - np.array([x_shift, y_shift])
@@ -1204,6 +1209,23 @@ class ScenarioArchitect:
                 obj.data_coord_tmp = obj.data_coord
 
             self.update_plot(force_update=True)
+
+            # adapt axis limits
+            range_x = [min(min(self.__ent_cont[0].data_coord[:, 0]), min(self.__ent_cont[1].data_coord[:, 0])) - 10.0,
+                       max(max(self.__ent_cont[0].data_coord[:, 0]), max(self.__ent_cont[1].data_coord[:, 0])) + 10.0]
+            range_y = [min(min(self.__ent_cont[0].data_coord[:, 1]), min(self.__ent_cont[1].data_coord[:, 1])) - 10.0,
+                       max(max(self.__ent_cont[0].data_coord[:, 1]), max(self.__ent_cont[1].data_coord[:, 1])) + 10.0]
+
+            max_range = max(abs(range_x[1] - range_x[0]), abs(range_y[1] - range_y[0]))
+
+            self.__axes_plane.set_xlim(np.average(range_x) - max_range / 2, np.average(range_x) + max_range / 2)
+            self.__axes_plane.set_ylim(np.average(range_y) - max_range / 2, np.average(range_y) + max_range / 2)
+
+            # hide scaling slider
+            self.__sld_x_axis.disconnect(self.__sld_x_axis_cid)
+            self.__sld_x_axis.ax.set_visible(False)
+            self.__button_reset.disconnect(self.__button_reset_cid)
+            self.__button_reset.ax.set_visible(False)
 
     # ------------------------------------------------------------------------------------------------------------------
     # - MOUSE EVENTS ---------------------------------------------------------------------------------------------------
