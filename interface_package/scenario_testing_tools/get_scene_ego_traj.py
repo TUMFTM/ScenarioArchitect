@@ -36,9 +36,13 @@ def get_scene_ego_traj(file_path: str,
     # if archive, extract relevant file
     if ".saa" in file_path:
         with zipfile.ZipFile(file_path) as zipObj:
-            with zipObj.open(os.path.basename(file_path).replace('.saa', '.scn')) as zf,\
-                    open(file_path.replace('.saa', '.scn'), 'wb') as f:
-                shutil.copyfileobj(zf, f)
+            tmp_file = next((x for x in zipObj.namelist() if '.scn' in x), None)
+
+            if tmp_file is not None:
+                with zipObj.open(tmp_file) as zf, open(file_path.replace('.saa', '.scn'), 'wb') as f:
+                    shutil.copyfileobj(zf, f)
+            else:
+                raise ValueError("Could not find *.scn file in the provided Scenario-Architect archive!")
 
     # retrieve data from file
     data = np.genfromtxt(fname=file_path.replace('.saa', '.scn'),

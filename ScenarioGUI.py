@@ -206,7 +206,7 @@ class ScenarioArchitect:
         # Set time window as active figure
         plt.figure(self.__fig_time.number)
 
-        # Open plot window button
+        # Playback button
         plybck_ax = self.__fig_time.add_axes([0.02, 0.95, 0.15, 0.04])
         button_plybck = Button(plybck_ax, 'Playback', color=self.__config.get('VISUAL', 'btn_color'),
                                hovercolor='0.975')
@@ -961,10 +961,18 @@ class ScenarioArchitect:
 
             # load pickle
             if ".saa" in file_path:
-                # from zip file
+                # from zip file -> open file with .sas extension
                 with zipfile.ZipFile(file_path) as zipObj:
-                    with zipObj.open(os.path.basename(file_path).replace('.saa', '.sas')) as f:
-                        imp_container = pickle.load(f)
+                    tmp_file = next((x for x in zipObj.namelist() if '.sas' in x), None)
+
+                    if tmp_file is not None:
+                        with zipObj.open(tmp_file) as f:
+                            imp_container = pickle.load(f)
+                    else:
+                        simpledialog.messagebox.showinfo(title="Unsupported file type",
+                                                         message="Could not find a '*.sas' file in the "
+                                                                 "Scenario-Architect archive ('*.saa')!")
+                        return
             else:
                 # directly from file
                 with open(file_path, 'rb') as f:

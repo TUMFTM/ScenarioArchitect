@@ -29,8 +29,14 @@ def get_scene_track(file_path: str) -> tuple:
 
     # if archive, extract relevant file
     if ".saa" in file_path:
-        # from zip file
-        f = zipfile.ZipFile(file_path).open(os.path.basename(file_path).replace('.saa', '.scn'))
+        zip_obj = zipfile.ZipFile(file_path)
+        tmp_file = next((x for x in zip_obj.namelist() if '.scn' in x), None)
+
+        if tmp_file is not None:
+            f = zip_obj.open(tmp_file)
+            zip_obj.close()
+        else:
+            raise ValueError("Could not find *.scn file in the provided Scenario-Architect archive!")
 
     else:
         # directly from file

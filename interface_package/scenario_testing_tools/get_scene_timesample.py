@@ -50,9 +50,13 @@ def get_scene_timesample(file_path: str,
         # if archive, extract file
         if ".saa" in file_path:
             with zipfile.ZipFile(file_path) as zipObj:
-                with zipObj.open(os.path.basename(file_path).replace('.saa', '.scn')) as zf, \
-                        open(file_path.replace('.saa', '.scn'), 'wb') as f:
-                    shutil.copyfileobj(zf, f)
+                tmp_file = next((x for x in zipObj.namelist() if '.scn' in x), None)
+
+                if tmp_file is not None:
+                    with zipObj.open(tmp_file) as zf, open(file_path.replace('.saa', '.scn'), 'wb') as f:
+                        shutil.copyfileobj(zf, f)
+                else:
+                    raise ValueError("Could not find *.scn file in the provided Scenario-Architect archive!")
 
         # load time-stamps from file, if not provided
         time_f = np.genfromtxt(file_path.replace('.saa', '.scn'), delimiter=';', skip_header=2, names=True)['time']

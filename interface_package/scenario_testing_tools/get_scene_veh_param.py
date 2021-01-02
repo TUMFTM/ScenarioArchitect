@@ -30,14 +30,13 @@ def get_scene_veh_param(file_path: str) -> tuple:
 
     # -- unzip relevant files ------------------------------------------------------------------------------------------
     with zipfile.ZipFile(file_path) as zipObj:
+        zf1_name = next((x for x in zipObj.namelist() if '_ggv.csv' in x), None)
+        zf2_name = next((x for x in zipObj.namelist() if '_ax_max_machines.csv' in x), None)
 
-        f_list = zipObj.namelist()
-        if not (os.path.basename(file_path).replace('.saa', '_ggv.csv') in f_list
-                and os.path.basename(file_path).replace('.saa', '_ax_max_machines.csv') in f_list):
+        if zf1_name is None or zf2_name is None:
             raise ValueError("Could not find all vehicle parameters in the Scenario-Architect archive!")
 
-        with zipObj.open(os.path.basename(file_path).replace('.saa', '_ggv.csv')) as zf1,\
-                zipObj.open(os.path.basename(file_path).replace('.saa', '_ax_max_machines.csv')) as zf2,\
+        with zipObj.open(zf1_name) as zf1, zipObj.open(zf2_name) as zf2,\
                 open(file_path.replace('.saa', '_ggv.csv'), 'wb') as f1,\
                 open(file_path.replace('.saa', '_ax_max_machines.csv'), 'wb') as f2:
             shutil.copyfileobj(zf1, f1)
