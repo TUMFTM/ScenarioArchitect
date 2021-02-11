@@ -14,12 +14,14 @@ Sample script extracting the ego-trajectory for a given scenario file (whole sce
 
 
 def get_scene_ego_traj(file_path: str,
-                       append_plan: bool = True) -> tuple:
+                       append_plan: bool = True,
+                       rtrn_safety: bool = False) -> tuple:
     """
     Method extracting the ego-trajectory for a given scenario file (whole duration).
 
     :param file_path:   string holding the path to the scene data file ('*.scn') or Scenario-Architect archive ('*.saa')
     :param append_plan: if 'True': return not only passed poses, but also append planned ego-traj. from last time-stamp
+    :param rtrn_safety: if 'True': return a safety rating for each time-stamps, if present in provided file else "None"
     :returns (time,     time stamps along the trajectory
               x,        x-coordinates along the time-stamps of the ego vehicle
               y,        y-coordinates along the time-stamps of the ego vehicle
@@ -27,6 +29,8 @@ def get_scene_ego_traj(file_path: str,
               curv,     curvature of the path at the position of each time-stamp
               vel,      velocity of the ego vehicle at the position of each time-stamp
               acc)      acceleration of the ego vehicle at the position of each time-stamp
+              sfty_dyn, (if enabled) safety with respect to other dynamic vehicles for each t [True, False, None]
+              sfty_stat)(if enabled) safety with respect to a static environment for each t [True, False, None]
     """
 
     if not (".saa" in file_path or ".scn" in file_path):
@@ -85,6 +89,7 @@ def get_scene_ego_traj(file_path: str,
         curv = np.concatenate((data['curv'], ego_traj[1:, 3]))
         vel = np.concatenate((data['vel'], ego_traj[1:, 4]))
         acc = np.concatenate((data['acc'], ego_traj[1:, 5]))
+
     else:
         time = data['time']
         x = data['x']
@@ -94,11 +99,34 @@ def get_scene_ego_traj(file_path: str,
         vel = data['vel']
         acc = data['acc']
 
+    # extract safety data (if requested)
+    safety_dyn = None
+    safety_stat = None
+    if rtrn_safety:
+        with open(file_path.replace('.saa', '.scn')) as file:
+            # get to top of file (1st line)
+            file.seek(0)
+            file.readline()
+            file.readline()
+            header = file.readline()[:-1]
+
+            if "safety_dyn" in header and "safety_stat" in header:
+                safety_dyn = [None] * len(time)
+                safety_stat = [None] * len(time)
+
+                # extract last line
+                for i, line in enumerate(file):
+                    safety_dyn[i] = json.loads(line.split(";")[header.split(";").index("safety_dyn")])
+                    safety_stat[i] = json.loads(line.split(";")[header.split(";").index("safety_stat")])
+
     # if it was in archive, remove extracted file after import
     if ".saa" in file_path:
         os.remove(file_path.replace('.saa', '.scn'))
 
-    return time, x, y, heading, curv, vel, acc
+    if not rtrn_safety:
+        return time, x, y, heading, curv, vel, acc
+    else:
+        return time, x, y, heading, curv, vel, acc, safety_dyn, safety_stat
 
 
 # -- main --------------------------------------------------------------------------------------------------------------

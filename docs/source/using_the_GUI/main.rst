@@ -12,4 +12,5 @@ These pages give you an overview on the basic actions when interacting with the 
    content/import_export.rst
    content/workspace.rst
    content/temporal.rst
+   content/safety.rst
    content/config.rst

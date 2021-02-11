@@ -18,7 +18,8 @@ data file, linear interpolation is used to generate the desired instance between
 
 def get_scene_timesample(file_path: str,
                          t_in: float,
-                         time_f: np.ndarray = None) -> tuple:
+                         time_f: np.ndarray = None,
+                         append_safety: bool = False) -> tuple:
     """
     Method extracting scenario data for a given time instance. If the given time step is not present in the data file,
     linear interpolation is used to generate the desired instance between the neighboring time instances.
@@ -28,6 +29,7 @@ def get_scene_timesample(file_path: str,
                             * float number holding the time-stamp to be extracted [linear interp. between neighb. pts]
                             * int number holding the number of the data reading to be extracted from the file
     :param time_f:          time-stamps from file (for faster exec.: load once and hand to function on next iter)
+    :param append_safety:   append safety ground truth in returned tuple if provided in loaded scenario
     :returns (time,         time stamp of the returned sample
               pos,          position of the ego vehicle (list holding x and y)
               heading,      heading of the ego vehicle (in the global frame)
@@ -39,6 +41,8 @@ def get_scene_timesample(file_path: str,
               object_array, information about the vehicles in the scene (dict of dicts, each key being the object id and
                             every value holding the following keys ['X', 'Y', 'psi', 'vel', 'length', 'width'])
               time_f)       time-stamps from file (for faster exec.: store this value and hand to function on next iter)
+              safety_dyn,   (optional if enabled) safety with respect to other dynamic vehicles [True, False, None]
+              safety_stat)  (optional if enabled) safety with respect to a static environment [True, False, None]
     """
 
     if not (".saa" in file_path or ".scn" in file_path):
@@ -120,7 +124,7 @@ def get_scene_timesample(file_path: str,
     # check object_array for proper format
     object_array_prev = json.loads(line_prev[header.index("object_array")])
 
-    if object_array_prev and len(object_array_prev[0][1]) != 6:
+    if object_array_prev and len(object_array_prev[0][1]) < 6:
         raise ValueError("Provided scenario file does not hold the expected amount of object parameters. Check for "
                          "version compliance (update scenario_testing_tools and scenario-architect to newest version) "
                          "and load + export the relevant scenarios again.")
@@ -149,6 +153,12 @@ def get_scene_timesample(file_path: str,
                                    'length': veh[1][4],
                                    'width': veh[1][5]}
 
+        safety_dyn = None
+        safety_stat = None
+        if "safety_dyn" in header and "safety_stat" in header:
+            safety_dyn = json.loads(line_prev[header.index("safety_dyn")])
+            safety_stat = json.loads(line_prev[header.index("safety_stat")])
+
     else:
         # -- interpolate between timestamps ----------------------------------------------------------------------------
         time = np.interp(t_in, time_f[idx:idx + 2], time_f[idx:idx + 2])
@@ -169,6 +179,17 @@ def get_scene_timesample(file_path: str,
                                                     float(line_next[header.index("vel")])])
         acc = np.interp(t_in, time_f[idx:idx + 2], [float(line_prev[header.index("acc")]),
                                                     float(line_next[header.index("acc")])])
+
+        safety_dyn = None
+        safety_stat = None
+        if "safety_dyn" in header and "safety_stat" in header:
+            sd_prv = json.loads(line_prev[header.index("safety_dyn")])
+            sd_nxt = json.loads(line_next[header.index("safety_dyn")])
+            safety_dyn = None if sd_prv is None or sd_nxt is None else sd_prv and sd_nxt
+
+            ss_prv = json.loads(line_prev[header.index("safety_stat")])
+            ss_nxt = json.loads(line_next[header.index("safety_stat")])
+            safety_stat = None if ss_prv is None or ss_nxt is None else ss_prv and ss_nxt
 
         # get ego-trajectory (interpolate first point for requested t_in)
         ego_traj = np.vstack(
@@ -213,7 +234,10 @@ def get_scene_timesample(file_path: str,
                                         'length': interp_obj[4],
                                         'width': interp_obj[5]}
 
-    return time, pos, heading, curv, vel, acc, ego_traj, ego_traj_em, object_list, time_f
+    if not append_safety:
+        return time, pos, heading, curv, vel, acc, ego_traj, ego_traj_em, object_list, time_f
+    else:
+        return time, pos, heading, curv, vel, acc, ego_traj, ego_traj_em, object_list, time_f, safety_dyn, safety_stat
 
 
 def interp_1d(x: float,

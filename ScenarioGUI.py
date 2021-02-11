@@ -8,8 +8,10 @@ import pickle
 import pkg_resources
 import configparser
 import numpy as np
+from numpy import matlib
 import zipfile
 import tkinter as tk
+import shapely.geometry
 from tkinter import messagebox, filedialog, simpledialog
 
 # matplotlib
@@ -90,16 +92,23 @@ class ScenarioArchitect:
         self.__keep_veh_plot = self.__config.getboolean('VISUAL', 'keep_veh_plot')
         self.__import_track_shift = self.__config.getboolean('TRACK_IMPORT', 'shift_track')
 
+        # import ggv from file
+        top_path = os.path.dirname(os.path.abspath(__file__))
+        ggv_path = top_path + "/params/veh_dyn_info/ggv.csv"
+        ax_max_machines_path = top_path + "/params/veh_dyn_info/ax_max_machines.csv"
+        self.__ggv, self.__ax_max_machines = tph.import_veh_dyn_info. \
+            import_veh_dyn_info(ggv_import_path=ggv_path,
+                                ax_max_machines_import_path=ax_max_machines_path)
+
         # --------------------------------------------------------------------------------------------------------------
         # - INIT PLOTS -------------------------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
 
         # -- main plot -------------------------------------------------------------------------------------------------
-        self.__fig_main, ax = plt.subplots()
+        self.__fig_main, ax = plt.subplots(figsize=(10, 6))
         self.__fig_main.canvas.set_window_title("Scenario GUI")
-        plt.subplots_adjust(right=0.8, bottom=0.25)
         self.__plot_all_vehicles = False
-        self.__plot_all_vehicles_text = True
+        self.__plot_all_vehicles_text = False
 
         # init data rows
         self.__x_marks, = plt.plot([], [], 'xk', zorder=98)
@@ -124,51 +133,87 @@ class ScenarioArchitect:
         self.__fig_main.canvas.mpl_connect('motion_notify_event', self.onmove_main)
         self.__fig_main.canvas.mpl_connect('button_release_event', self.onrelease_main)
 
+        # change axis of __axes_plane (should be on the left)
+        pos_fig_plane = self.__axes_plane.get_position()
+        points_fig_plane = pos_fig_plane.get_points()
+        points_fig_plane[1][0] -= 0.05
+        points_fig_plane[1][1] += 0.05
+        pos_fig_plane.set_points(points_fig_plane)
+        self.__axes_plane.set_position(pos_fig_plane)
+
         # -- velocity plot ---------------------------------------------------------------------------------------------
-        self.__fig_time, axes = plt.subplots(3, 1)
+        self.__fig_time, axes = plt.subplots(4, 1, figsize=(8, 9))  # create a window (8x9) with 4 plots
         self.__fig_time.canvas.set_window_title("Temporal Plot")
 
         self.__axes_a_t = axes[0]
         self.__axes_a_t.grid()
         self.__axes_a_t.set_ylabel("a in m/s²")
-        self.__axes_a_t.xaxis.set_ticks_position('none')              # x-ticks invisible
-        plt.setp(self.__axes_a_t.get_xticklabels(), visible=False)    # set x-ticks invisible
+        self.__axes_a_t.xaxis.set_ticks_position('none')  # x-ticks invisible
+        plt.setp(self.__axes_a_t.get_xticklabels(), visible=False)  # set x-ticks invisible
         # self.__axes_a_t.set_xlim(left=0.0)                            # force 0.0 to be lower bound of x-axis
         # NOTE: fixing lower bound of x-axis here brakes auto-scaling --> enforced on every plot update
 
-        plt.subplot(312, sharex=self.__axes_a_t)
+        self.__axes_v_t = axes[1]
+        plt.subplot(412, sharex=self.__axes_a_t)  # 4 lines, 1 row, number 2 of the plots
         self.__axes_v_t = plt.gca()
         self.__axes_v_t.grid()
         self.__axes_v_t.set_xlabel("t in s", labelpad=0)
         self.__axes_v_t.set_ylabel("v in m/s")
-        self.__axes_v_t.xaxis.set_ticks_position('none')              # x-ticks invisible
-        self.__axes_v_t.tick_params(axis='x', which='major', pad=0)   # x-tick labels closer to axis
+        self.__axes_v_t.xaxis.set_ticks_position('none')  # x-ticks invisible
+        self.__axes_v_t.tick_params(axis='x', which='major', pad=0)  # x-tick labels closer to axis
         # self.__axes_v_t.set_ylim(bottom=0.0)                          # force 0.0 to be lower bound of y-axis
 
         self.__axes_v_s = axes[2]
         self.__axes_v_s.grid()
         self.__axes_v_s.set_xlabel("s in m", labelpad=0)
         self.__axes_v_s.set_ylabel("v in m/s")
-        self.__axes_v_s.xaxis.set_ticks_position('none')             # x-ticks invisible
+        self.__axes_v_s.xaxis.set_ticks_position('none')  # x-ticks invisible
         self.__axes_v_s.tick_params(axis='x', which='major', pad=0)  # x-tick labels closer to axis
         # self.__axes_v_s.set_ylim(bottom=0.0)                         # force 0.0 to be lower bound of y-axis
         # self.__axes_v_s.set_xlim(left=0.0)                           # force 0.0 to be lower bound of x-axis
 
-        # -- change axis location of __axes_v_t --
+        self.__axes_ssm = axes[3]
+        plt.subplot(414, sharex=self.__axes_a_t)  # 4 lines, 1 row, number 4 of the plots
+        self.__axes_ssm = plt.gca()  # shows the plot if the axe is shared
+        self.__axes_ssm.grid()
+        self.__axes_ssm.set_xlabel("t in s", labelpad=0)
+        self.__axes_ssm.set_ylabel("TTC in s  |  DSS/10 in m")
+        self.__axes_ssm.xaxis.set_ticks_position('none')  # x-ticks invisible
+        self.__axes_ssm.tick_params(axis='x', which='major', pad=0)  # x-tick labels closer to axis
+        self.__axes_ssm.set_ylim(bottom=-5.0, top=15.0)
+
+        # instantiate a second axes that shares the same x-axis
+        self.__axes_ssm2 = self.__axes_ssm.twinx()
+        self.__axes_ssm.set_zorder(self.__axes_ssm.get_zorder() + 1)  # set parent axis zorder higher for event handler
+        self.__axes_ssm2.set_ylim(bottom=-5.0, top=15.0)
+        self.__axes_ssm2.set_yticks([7.5, 12.5])
+        self.__axes_ssm2.set_yticklabels(["static\nsafety", "dynamic\nsafety"])
+
+        # -- change axis location of __axes_v_t and __axes_ssm--
         pos_acc_ax = self.__axes_a_t.get_position()
         pos_vel_ax = self.__axes_v_t.get_position()
+        pos_sp_ttc = self.__axes_ssm.get_position()
 
         # get limits of plot boxes (in percent of the plot window) [[left, low], [right, up]]
         points_acc_ax = pos_acc_ax.get_points()
         points_vel_ax = pos_vel_ax.get_points()
+        points_sp_ttc = pos_sp_ttc.get_points()
 
         # set new frame of the velocity plot
         points_vel_ax[0][1] += points_acc_ax[0][1] - 0.01 - points_vel_ax[1][1]  # move up to reveal description
-        points_vel_ax[1][1] = points_acc_ax[0][1] - 0.01        # move closer to bottom of acceleration plot (1% offset)
+        points_vel_ax[1][1] = points_acc_ax[0][1] - 0.01  # move closer to bottom of acceleration plot (1% offset)
 
         pos_vel_ax.set_points(points_vel_ax)
 
+        # changes the position of the TTC-x plot (should be lower)
+        points_sp_ttc[0][1] -= 0.02
+        points_sp_ttc[1][1] -= 0.02
+
+        pos_sp_ttc.set_points(points_sp_ttc)
+
+        # update the new plot setups
         self.__axes_v_t.set_position(pos_vel_ax)
+        self.__axes_ssm.set_position(pos_sp_ttc)
 
         # Member variables for manipulation of the velocity profile
         self.__vel_manip_handle = None
@@ -183,7 +228,9 @@ class ScenarioArchitect:
         self.__fig_time.canvas.mpl_connect('motion_notify_event', self.onmove_vel)
 
         # add patch for limits (red shade for velocity bounds not to be crossed)
-        max_comb_acc = self.__config.getfloat('VISUAL', 'vis_max_comb_acc')
+
+        np.sqrt(max(self.__ggv[:, 1]) ** 2 + max(self.__ggv[:, 2]) ** 2)
+        max_comb_acc = np.max(self.__ggv[:, 1:]) * self.__config.getfloat('SAFETY', 'comb_acc_factor')
         patch_xy = np.array([[-1000, -1000, 1000, 1000], [max_comb_acc, 1000, 1000, max_comb_acc]]).T
         track_ptch = ptch.Polygon(patch_xy, facecolor="red", alpha=0.3, zorder=1)
         self.__axes_a_t.add_artist(track_ptch)
@@ -191,10 +238,38 @@ class ScenarioArchitect:
         track_ptch = ptch.Polygon(patch_xy, facecolor="red", alpha=0.3, zorder=1)
         self.__axes_a_t.add_artist(track_ptch)
 
+        # add patch limits for SSM plot
+        if self.__config.get('SAFETY', 'ssm_safety') == 'ttc':
+            min_ssm = self.__config.getfloat('SAFETY', 'ttc_crit')
+            mid_ssm = self.__config.getfloat('SAFETY', 'ttc_undefined')
+        elif self.__config.get('SAFETY', 'ssm_safety') == 'dss':
+            min_ssm = self.__config.getfloat('SAFETY', 'dss_crit') / 10.0
+            mid_ssm = self.__config.getfloat('SAFETY', 'dss_undefined') / 10.0
+        else:
+            min_ssm = 0.0
+            mid_ssm = 0.0
+        patch_xy = np.array([[-1000, -1000, 1000, 1000], [min_ssm, -1000, -1000, min_ssm]]).T
+        limit_ptch = ptch.Polygon(patch_xy, facecolor="red", alpha=0.3, zorder=1)
+        self.__axes_ssm.add_artist(limit_ptch)
+        patch_xy = np.array([[-1000, -1000, 1000, 1000], [mid_ssm, min_ssm, min_ssm, mid_ssm]]).T
+        limit_ptch = ptch.Polygon(patch_xy, facecolor="orange", alpha=0.3, zorder=1)
+        self.__axes_ssm.add_artist(limit_ptch)
+
         # define cursor highlighting selected position in the temporal plot (red vertical line)
         self.__vel_ax_cursor, = self.__axes_v_t.plot([0.0], [0.0], lw=1, color='r', zorder=999)
         self.__acc_ax_cursor, = self.__axes_a_t.plot([0.0], [0.0], lw=1, color='r', zorder=999)
+        self.__ttc_ax_cursor, = self.__axes_ssm.plot([0.0], [0.0], lw=1, color='r', zorder=999)
         self.__cursor_last_t = 0.0
+
+        # handles for automatic safety rating in scenario
+        self.__safety_dyn_safe, = self.__axes_ssm.plot([], [], lw=10, color=self.__color_dict["TUM_green"], alpha=0.5,
+                                                       zorder=999, label="  safe ")
+        self.__safety_dyn_unsafe, = self.__axes_ssm.plot([], [], lw=10, color=self.__color_dict["TUM_orange"],
+                                                         alpha=0.5, zorder=999, label="  unsafe")
+        self.__safety_stat_safe, = self.__axes_ssm.plot([], [], lw=10, color=self.__color_dict["TUM_green"], alpha=0.5,
+                                                        zorder=999)
+        self.__safety_stat_unsafe, = self.__axes_ssm.plot([], [], lw=10, color=self.__color_dict["TUM_orange"],
+                                                          alpha=0.5, zorder=999)
 
         # store file-path (if saving again, suggest same name)
         self.__load_file = load_file
@@ -212,6 +287,12 @@ class ScenarioArchitect:
                                hovercolor='0.975')
         button_plybck.on_clicked(self.on_playback_click)
 
+        # Open window with SSM info
+        ssm = self.__fig_time.add_axes([0.22, 0.95, 0.15, 0.04])
+        button_ssm = Button(ssm, 'SSM Information', color=self.__config.get('VISUAL', 'btn_color'),
+                            hovercolor='0.975')
+        button_ssm.on_clicked(self.on_ssm_click)
+
         # Set main window as active figure
         plt.figure(self.__fig_main.number)
 
@@ -222,24 +303,25 @@ class ScenarioArchitect:
         self.__entity_descr = text_ax.text(0.0, 0.0, "Select entity\nto be drawn:")
 
         # Radio buttons for entity selection
-        rax = self.__fig_main.add_axes([0.8, 0.6, 0.15, 0.2], facecolor=self.__config.get('VISUAL', 'btn_color'))
-        self.__radio = RadioButtons(rax, ('None', 'bound_l', 'bound_r', 'veh_1', 'veh_2', 'veh_3'), active=0)
+        rax = self.__fig_main.add_axes([0.8, 0.55, 0.15, 0.25], facecolor=self.__config.get('VISUAL', 'btn_color'))
+        self.__radio = RadioButtons(rax, ('None', 'bound_l', 'bound_r', 'veh_1', 'veh_2', 'veh_3', 'veh_4', 'veh_5'),
+                                    active=0)
         self.__radio.on_clicked(self.toggled_radio)
 
+        # Reset all button
+        button_reset = Button(self.__fig_main.add_axes([0.8, 0.50, 0.15, 0.04]), 'Reset all Entities',
+                              color=self.__config.get('VISUAL', 'btn_color'),
+                              hovercolor='0.975')
+        button_reset.on_clicked(self.reset_all)
+
         # Reset button
-        button_reset_ent = Button(self.__fig_main.add_axes([0.8, 0.5, 0.15, 0.04]), 'Reset Entity',
+        button_reset_ent = Button(self.__fig_main.add_axes([0.8, 0.45, 0.15, 0.04]), 'Reset Entity',
                                   color=self.__config.get('VISUAL', 'btn_color'),
                                   hovercolor='0.975')
         button_reset_ent.on_clicked(self.reset_ent)
 
-        # Specify import track button
-        button_import_track = Button(self.__fig_main.add_axes([0.8, 0.45, 0.15, 0.04]), 'Import Track',
-                                     color=self.__config.get('VISUAL', 'btn_color'),
-                                     hovercolor='0.975')
-        button_import_track.on_clicked(self.load_track)
-
         # Specify import button
-        button_import = Button(self.__fig_main.add_axes([0.8, 0.4, 0.15, 0.04]), 'Import Scen.',
+        button_import = Button(self.__fig_main.add_axes([0.8, 0.40, 0.15, 0.04]), 'Import Scen.',
                                color=self.__config.get('VISUAL', 'btn_color'),
                                hovercolor='0.975')
         button_import.on_clicked(self.load_pckl)
@@ -250,8 +332,14 @@ class ScenarioArchitect:
                                hovercolor='0.975')
         button_export.on_clicked(self.export_to_file)
 
+        # Specify import track button
+        button_import_track = Button(self.__fig_main.add_axes([0.8, 0.30, 0.15, 0.04]), 'Import Track',
+                                     color=self.__config.get('VISUAL', 'btn_color'),
+                                     hovercolor='0.975')
+        button_import_track.on_clicked(self.load_track)
+
         # Plot all vehicles checkbox
-        check_all_veh = CheckButtons(self.__fig_main.add_axes([0.8, 0.24, 0.15, 0.1]), ['All Poses', 'Add Text'],
+        check_all_veh = CheckButtons(self.__fig_main.add_axes([0.8, 0.19, 0.15, 0.1]), ['All Poses', 'Add Text'],
                                      [self.__plot_all_vehicles, self.__plot_all_vehicles_text])
         check_all_veh.on_clicked(self.toggled_veh)
 
@@ -262,10 +350,10 @@ class ScenarioArchitect:
         button_plt_wndw.on_clicked(self.open_plot_window)
 
         # Scaling reset button
-        self.__button_reset = Button(self.__fig_main.add_axes([0.8, 0.02, 0.1, 0.04]), 'Reset',
-                                     color=self.__config.get('VISUAL', 'btn_color'),
-                                     hovercolor='0.975')
-        self.__button_reset_cid = self.__button_reset.on_clicked(self.reset)
+        button = Button(self.__fig_main.add_axes([0.8, 0.02, 0.15, 0.04]), 'Reset Scale',
+                        color=self.__config.get('VISUAL', 'btn_color'),
+                        hovercolor='0.975')
+        button.on_clicked(self.reset)
 
         # Scaling slider
         self.__sld_x_axis = Slider(self.__fig_main.add_axes([0.1, 0.02, 0.6, 0.03],
@@ -291,20 +379,26 @@ class ScenarioArchitect:
                                                       a_t_axis=self.__axes_a_t,
                                                       v_t_axis=self.__axes_v_t,
                                                       v_s_axis=self.__axes_v_s, type_ego=True,
+                                                      ssm_t_axis=self.__axes_ssm,
                                                       color_str=self.get_veh_color(1),
+                                                      veh_width=self.__config.getfloat('VEHICLE', 'veh_width'),
+                                                      veh_length=self.__config.getfloat('VEHICLE', 'veh_length'),
                                                       plan_hor=self.__config.getfloat('FILE_EXPORT',
                                                                                       'export_time_traj_horizon')),
         )
 
-        # add two other vehicles
-        for i in range(2, 4):
+        # add 4 other vehicles
+        for i in range(2, 6):
             self.__ent_cont.append(
                 helper_funcs.src.ScenarioEntities.Vehicle(i_in=i,
                                                           plane_axis=self.__axes_plane,
                                                           a_t_axis=self.__axes_a_t,
                                                           v_t_axis=self.__axes_v_t,
                                                           v_s_axis=self.__axes_v_s,
-                                                          color_str=self.get_veh_color(i)),
+                                                          ssm_t_axis=self.__axes_ssm,
+                                                          color_str=self.get_veh_color(i),
+                                                          veh_width=self.__config.getfloat('VEHICLE', 'veh_width'),
+                                                          veh_length=self.__config.getfloat('VEHICLE', 'veh_length'))
             )
 
         # currently selected entity (via radio-buttons - one element in the list of '__ent_cont')
@@ -312,14 +406,6 @@ class ScenarioArchitect:
 
         self.__pidx_vel = None
         self.__pidx_main = None
-
-        # import ggv from file
-        top_path = os.path.dirname(os.path.abspath(__file__))
-        ggv_path = top_path + "/params/veh_dyn_info/ggv.csv"
-        ax_max_machines_path = top_path + "/params/veh_dyn_info/ax_max_machines.csv"
-        self.__ggv, self.__ax_max_machines = tph.import_veh_dyn_info. \
-            import_veh_dyn_info(ggv_import_path=ggv_path,
-                                ax_max_machines_import_path=ax_max_machines_path)
 
         # load scenario, if provided
         if load_file is not None:
@@ -331,7 +417,6 @@ class ScenarioArchitect:
     # ------------------------------------------------------------------------------------------------------------------
     # - INTERACTION WITH GUI ELEMENTS ----------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
-
     def toggled_radio(self,
                       _: str = None) -> None:
         """
@@ -414,6 +499,29 @@ class ScenarioArchitect:
         # update plot
         self.update_plot()
 
+    def reset_all(self,
+                  _) -> None:
+
+        # reset container
+        if self.__radio.value_selected != 'None':
+            # remove entity from list of protected velocity profiles
+            self.__vel_mod_protect.pop(self.__radio.value_selected, None)
+
+        for obj in self.__ent_cont:
+            obj.data_coord = None
+            obj.data_exp = None
+            obj.data_vel_coord = None
+
+            # remove vehicle visualization
+            if obj.TYPE_VEHICLE:
+                obj.highlight_pose(t_in=None)
+
+            # update temporary data
+            obj.data_coord_tmp = copy.deepcopy(obj.data_coord)
+
+        # update plot
+        self.update_plot()
+
     def on_playback_click(self,
                           _) -> None:
         """
@@ -434,6 +542,7 @@ class ScenarioArchitect:
         # store axis limits in order to avoid readout every iteration
         vel_ylim = self.__axes_v_t.get_ylim()
         acc_ylim = self.__axes_a_t.get_ylim()
+        ttc_ylim = self.__axes_ssm.get_ylim()
 
         while t < t_range[1]:
             tic = time.time()
@@ -441,6 +550,7 @@ class ScenarioArchitect:
             # update cursor in velocity window
             self.__vel_ax_cursor.set_data([t, t], vel_ylim)
             self.__acc_ax_cursor.set_data([t, t], acc_ylim)
+            self.__ttc_ax_cursor.set_data([t, t], ttc_ylim)
             self.__fig_time.canvas.draw_idle()
 
             # for all trajectories holding temporal information, calculate index
@@ -450,6 +560,165 @@ class ScenarioArchitect:
 
             plt.pause(0.001)
             t += time.time() - tic
+
+    def on_ssm_click(self,
+                     _) -> None:
+
+        """
+        Called when the 'SSM information'-button is clicked.
+        """
+
+        # definition of a function to destroy and refresh / reload the window
+        def button_ok_click():
+            window.destroy()
+
+        # definition of a function, which opens a new window with information about the SSM calculation
+        def button_information_calculation():
+            messagebox.showinfo('SSM Information',
+                                'Key facts for the calculation of the SSM:\n'
+                                '- The lane-based coordinates can only be calculated for paths after the first point '
+                                'and before the last point of the lane-based coordinate system.\n'
+                                '- Both bounds must be specified for the calculation of the SSMs.\n'
+                                '- The SSM scores are only calculated for the ego vehicle in relation to each other '
+                                'vehicle.')
+
+        def calculate_info():
+            # init variables
+            # Variable that stores whether an ego vehicle is present or not (False = no ego vehicle)
+            ego_veh_used = False
+
+            # variables to calculate the lateral distance between teh vehicles
+            pos_ego_stamps = None
+
+            # counter for bounds
+            counter_bound = 0
+
+            veh_width = self.__config.getfloat('VEHICLE', 'veh_width')
+            veh_length = self.__config.getfloat('VEHICLE', 'veh_length')
+
+            for bound in self.__ent_cont:
+                if bound.TYPE_BOUND and bound.get_mode_coord() is not None:
+                    counter_bound += 1
+
+            # generate information about the SSMs
+            for obj in self.__ent_cont:
+
+                if obj.TYPE_VEHICLE:
+                    info_txt = ""
+
+                    # SSM information for veh_1 (ego-vehicle)
+                    if obj.id == 'veh_1':
+                        # if the ego-vehicle is used
+                        if obj.get_mode_coord() is not None and counter_bound == 2:
+                            info_txt = 'There is no SSM calculation for the ego-vehicle.'
+                            ego_veh_used = True
+                            pos_ego_stamps = obj.data_ssm[:, 3:5]
+
+                        # if the Ego-Vehicle is not specified
+                        elif obj.get_mode_coord() is None and counter_bound == 2:
+                            info_txt = 'Ego-vehicle is not specified yet!'
+                        else:
+                            info_txt = 'SSM calculation is not possible since one or both bounds are not specified.'
+
+                    # SSM information for the other vehicles
+                    else:
+
+                        # check if preconditions hold
+                        if obj.get_mode_coord() is not None and max(obj.data_ssm[:, 1]) != 0 and ego_veh_used is True \
+                                and counter_bound == 2 and obj.data_ssm is not None:
+
+                            # check if vehicles drive in same direction
+                            driving_same_direction = ((pos_ego_stamps[0, 0] < pos_ego_stamps[-1, 0]
+                                                       and obj.data_ssm[0, 3] < obj.data_ssm[-1, 3])
+                                                      or (pos_ego_stamps[0, 0] > pos_ego_stamps[-1, 0]
+                                                          and obj.data_ssm[0, 3] > obj.data_ssm[-1, 3]))
+
+                            if driving_same_direction:
+
+                                # get minimal values
+                                i_ttc = np.nanargmin(obj.data_ssm[:, 1])
+                                i_dss = np.nanargmin(obj.data_ssm[:, 2])
+                                print(obj.data_ssm[:, 2])
+
+                                # check for collision at given points
+                                if not (abs(pos_ego_stamps[i_ttc, 0] - obj.data_ssm[i_ttc, 3]) < veh_length * 1.2
+                                        and abs(pos_ego_stamps[i_ttc, 1] - obj.data_ssm[i_ttc, 4]) < veh_width * 1.2):
+                                    ttc_col_pre = 'no '
+                                else:
+                                    ttc_col_pre = 'possible '
+
+                                if not (abs(pos_ego_stamps[i_dss, 0] - obj.data_ssm[i_dss, 3]) < veh_length * 1.2
+                                        and abs(pos_ego_stamps[i_dss, 1] - obj.data_ssm[i_dss, 4]) < veh_width * 1.2):
+                                    dss_col_pre = 'no '
+                                else:
+                                    dss_col_pre = 'possible '
+
+                                # generate info text
+                                info_txt = ('The minimal TTC is ' + format(obj.data_ssm[i_ttc, 1], '.2f')
+                                            + ' s at t=' + format(obj.data_ssm[i_ttc, 0], '.2f') + ' s. '
+                                            + '(' + ttc_col_pre + 'collision)\n'
+                                            + 'The minimal DSS is ' + format(obj.data_ssm[i_dss, 2], '.2f')
+                                            + ' m at t=' + format(obj.data_ssm[i_dss, 0], '.2f') + ' s. '
+                                            + '(' + dss_col_pre + 'collision)')
+
+                            else:
+                                info_txt = 'Vehicle is driving in opposing direction!'
+
+                        # if not all bounds specified
+                        elif counter_bound < 2:
+                            print("updated")
+                            info_txt = 'SSM calculation is not possible since one or both bounds are not specified.'
+
+                        # if the ego-vehicle is not used
+                        elif ego_veh_used is False and counter_bound == 2:
+                            info_txt = 'SSM calculation is not possible since the ego-vehicle (veh_1) is not specified!'
+
+                        # if the vehicle is not specified
+                        elif obj.get_mode_coord() is None and obj.data_ssm is None:
+                            info_txt = 'Vehicle "' + str(obj.id) + '" is not specified!'
+
+                    # set label text
+                    label_info_dict[obj.id].configure(text=info_txt)
+
+        # -- init window elements (labels and buttons) --
+        # open window
+        window = tk.Tk()
+        window.title('TTC information')
+        window.geometry('600x300')
+
+        # text at the top of the new window
+        label = tk.Label(window, text='This window provides detailed information about the SMMs:')
+        label.place(x=10, y=5)
+
+        # init vehicle labels
+        y = 50
+        label_info_dict = dict()
+        for obj_ in self.__ent_cont:
+            if obj_.TYPE_VEHICLE:
+                label_descr = tk.Label(window, text=obj_.id + ":")
+                label_descr.place(x=10, y=y)
+
+                label_info_dict[obj_.id] = tk.Label(window, text='--', anchor="e", justify=tk.LEFT)
+                label_info_dict[obj_.id].place(x=100, y=y)
+
+                y += 40
+
+        # update data
+        calculate_info()
+
+        # button to refresh the window
+        button = tk.Button(master=window, text='Refresh', command=calculate_info)
+        button.place(x=10, y=275, width=150, height=20)
+
+        # button to close the window
+        button_ok = tk.Button(master=window, text='Close', command=button_ok_click)
+        button_ok.place(x=210, y=275, width=150, height=20)
+
+        # button to open a window with information about the ttc calculation the window
+        button_info = tk.Button(master=window, text='SSM calculation info', command=button_information_calculation)
+        button_info.place(x=410, y=275, width=150, height=20)
+
+        tk.mainloop()
 
     def open_plot_window(self,
                          _) -> None:
@@ -561,6 +830,7 @@ class ScenarioArchitect:
             self.__track_ptch_hdl = None
 
         # expect bounds on first two entities
+
         if self.__ent_cont[0].TYPE_BOUND and self.__ent_cont[1].TYPE_BOUND:
             if self.__ent_cont[0].get_mode_coord() is not None and self.__ent_cont[1].get_mode_coord() is not None:
                 # track patch
@@ -612,18 +882,83 @@ class ScenarioArchitect:
                     all_veh_text_need_update = True
                     break
 
+        # -------------------------------------- calculate center line -------------------------------------------------
+        calc_center_line = None
+
+        # get the center line and the distance s
+        if self.__ent_cont[0].TYPE_BOUND and self.__ent_cont[1].TYPE_BOUND:
+            if self.__ent_cont[0].get_mode_coord() is not None and \
+                    self.__ent_cont[1].get_mode_coord() is not None:
+
+                # calculate number of shared elements of the left and right bound
+                n_shared_el = min(self.__ent_cont[0].get_mode_coord().shape[0],
+                                  self.__ent_cont[1].get_mode_coord().shape[0])
+
+                # for the number of not shared elements
+                not_shared_el = abs(self.__ent_cont[0].get_mode_coord().shape[0]
+                                    - self.__ent_cont[1].get_mode_coord().shape[0])
+
+                # define the left and right bound
+                bound_left = np.zeros(shape=(n_shared_el + not_shared_el, 2))
+                bound_right = np.zeros(shape=(n_shared_el + not_shared_el, 2))
+
+                # Calculate the values of the bounds for the same number of bound points on the left and right
+                # side
+                if n_shared_el > 1:
+                    # init bounds by filling common places
+                    bound_left[:self.__ent_cont[0].get_mode_coord().shape[0]] = self.__ent_cont[0].get_mode_coord()
+                    bound_right[:self.__ent_cont[1].get_mode_coord().shape[0]] = self.__ent_cont[1].get_mode_coord()
+
+                    # if the right bound [1] has more elements
+                    if self.__ent_cont[0].get_mode_coord().shape[0] < self.__ent_cont[1].get_mode_coord().shape[0]:
+                        bound_left[n_shared_el:, :] = bound_left[n_shared_el - 1, :]
+
+                    # if the left bound [0] has more elements
+                    elif self.__ent_cont[0].get_mode_coord().shape[0] > self.__ent_cont[1].get_mode_coord().shape[0]:
+                        bound_right[n_shared_el:, :] = bound_right[n_shared_el - 1, :]
+
+                    # Calculate the center line and the distance s
+                    calc_center_line = helper_funcs.src.ssm.calc_center_line(bound_l=bound_left,
+                                                                             bound_r=bound_right)
+
+        # -------------------------------- calculate lane based coordinates for ego (for TTC) --------------------------
+        # calculate the lane based coordinates for all vehicles expect the ego vehicle
+        vehicle_ego_info = None
+
+        # calculate the lane based coordinates for the ego vehicle
+        if calc_center_line is not None and self.__ent_cont[2].TYPE_VEHICLE and self.__ent_cont[2].TYPE_EGO \
+                and self.__ent_cont[2].data_exp is not None:
+            # init lane based position for each point in data_exp
+            ego_pos_lane = np.zeros((self.__ent_cont[2].data_exp.shape[0], 3))
+
+            # for each point in data_exp calculate the lane based coordinates (lane_pos holds n, s, track angle)
+            for i in range(int(self.__ent_cont[2].data_exp.shape[0])):
+                ego_pos_lane[i, 0:3] = helper_funcs.src.ssm.global_2_lane_based(pos=self.__ent_cont[2].data_exp[i][1:3],
+                                                                                center_line=calc_center_line[0],
+                                                                                s_course=calc_center_line[1])
+
+            # calculate the value of position and speed for defined increment
+            vehicle_ego_info = helper_funcs.src.ssm.timestamp_info(lane_based_poses=ego_pos_lane,
+                                                                   covered_distance=self.__ent_cont[2].data_exp[:, 0],
+                                                                   velocity=self.__ent_cont[2].data_exp[:, 5],
+                                                                   t_increment=self.__config.getfloat('SAFETY',
+                                                                                                      'ssm_increment'),
+                                                                   t_horizon=self.__config.getfloat('SAFETY',
+                                                                                                    'ssm_horizon'))
+
         # for all entities
         for obj in self.__ent_cont:
 
             # if entity is a vehicle
             if obj.TYPE_VEHICLE:
+                # -------------------------------- update (if) or reset (else) plot ------------------------------------
                 if obj.get_mode_coord() is not None and obj.data_exp is not None:
 
-                    # skip plot update, if data did not change
+                    # skip plot update, if data did not change; continue if the plot has changed or is forced to update
                     if obj.data_vel_coord is None or max(obj.data_exp[:, 5]) == 0.0 \
                             or self.__radio.value_selected == obj.id or self.__plot_all_vehicles \
                             or all_veh_text_need_update or force_update:
-
+                        # ------------------------------ calculate velocity and acceleration ---------------------------
                         # if more than two coordinates and velocity profile unset or changed (set to zeros by path plan)
                         if obj.get_mode_coord().size > 2 and (max(obj.data_exp[:, 5]) == 0.0
                                                               or obj.data_vel_coord is None):
@@ -659,13 +994,88 @@ class ScenarioArchitect:
 
                             obj.data_exp[:, 6] = np.concatenate((ax, [0]))
 
-                        # update temporal plots
+                        # -------------------------------------- calculate TTC -----------------------------------------
+                        # if velocity has been calculated
+                        if max(obj.data_exp[:, 5]) != 0.0:
+
+                            # calculate the passed time for each position
+                            t = abs(np.concatenate(([0], np.cumsum(np.divide(np.diff(obj.data_exp[:, 0]),
+                                                                             obj.data_exp[:-1, 5],
+                                                                             out=np.full(obj.data_exp[:-1, 5].shape[0],
+                                                                                         np.inf),
+                                                                             where=obj.data_exp[:-1, 5] != 0)))))
+
+                            # get number of discretized steps based on time-increment
+                            n_steps = int((min(max(t), self.__config.getfloat('SAFETY', 'ssm_horizon'))
+                                           / self.__config.getfloat('SAFETY', 'ssm_increment')) + 1)
+
+                            # init variable data_ssm (time, TTC, DSS, s_pos, n_pos, heading, velocity)
+                            obj.data_ssm = np.zeros((n_steps, 7))
+
+                        else:
+                            # (re)init variables if no velocity profile exists
+                            obj.data_ssm = np.zeros((obj.data_exp.shape[0], 7))
+
+                        # -- calculate the time to collision --
+                        if calc_center_line is not None and vehicle_ego_info is not None \
+                                and max(obj.data_exp[:, 5]) != 0.0:
+
+                            # calculate the lane based coordinates
+                            # init variable to save lane-based coordinates (n-coordinate, s-coordinate, track heading)
+                            veh_pose_lane = np.zeros((obj.data_exp.shape[0], 3))
+
+                            # calculate and save lane-based values
+                            for i in range(int(obj.data_exp.shape[0])):
+                                veh_pose_lane[i, 0:3] = helper_funcs.src.ssm.\
+                                    global_2_lane_based(pos=obj.data_exp[i][1:3],
+                                                        center_line=calc_center_line[0],
+                                                        s_course=calc_center_line[1])
+
+                            # calculate the position and speed for defined increment
+                            vehicle_info = helper_funcs.src.ssm.timestamp_info(lane_based_poses=veh_pose_lane,
+                                                                               covered_distance=obj.data_exp[:, 0],
+                                                                               velocity=obj.data_exp[:, 5],
+                                                                               t_increment=self.__config.getfloat
+                                                                               ('SAFETY', 'ssm_increment'),
+                                                                               t_horizon=self.__config.getfloat
+                                                                               ('SAFETY', 'ssm_horizon'))
+
+                            # store data to object
+                            obj.data_ssm[:, 0] = vehicle_info[:, 0]
+                            obj.data_ssm[:, 3:] = vehicle_info[:, 1:]
+
+                            # Calculate the time to collision when the ego_vehicle and another vehicle exists
+                            if vehicle_info is not None and vehicle_ego_info is not None and not obj.TYPE_EGO and \
+                                    obj.data_ssm.shape[0] > 1:
+
+                                # Calculate the ttc for every timestamp
+                                ttc, dss = helper_funcs.src.ssm.calc_ssm(
+                                    pos_ego_stamps=vehicle_ego_info,
+                                    pos_vehicle_stamps=vehicle_info,
+                                    veh_length=self.__config.getfloat('VEHICLE', 'veh_length'),
+                                    reaction_time=self.__config.getfloat('SAFETY', 'dds_reaction_t'),
+                                    maximum_acc=np.max(self.__ggv[:, 1:])
+                                )
+
+                                # save tht ttc value in data_exp
+                                obj.data_ssm[:, 1] = ttc
+                                obj.data_ssm[:, 2] = dss
+
+                            # if only the ego vehicle is used
+                            elif vehicle_info is not None and obj.TYPE_EGO:
+
+                                obj.data_ssm[:, 1] = None
+                                obj.data_ssm[:, 2] = None
+
+                        # ------------------------------------ update temporal plots -----------------------------------
                         obj.update_temporal_plot()
 
-                        # plot temporal selector
+                        # ------------------------------------ plot temporal selector ----------------------------------
                         if self.__radio.value_selected in obj.id:
                             self.__vel_manip_handle, = self.__axes_v_s.plot(obj.data_exp[:, 0], obj.data_exp[:, 5],
                                                                             'ok', alpha=0.5, zorder=100)
+
+                        # ---------------------------- plot all vehicles along trajectories ----------------------------
                         # check if "plot all vehicles" is activated
                         if self.__plot_all_vehicles:
                             # generate time stamps for stored vehicle data (if v=0, do not move forward instead of inf)
@@ -725,8 +1135,10 @@ class ScenarioArchitect:
                         # for scaling, remove cursor
                         temp_va = self.__vel_ax_cursor.get_xdata()
                         temp_aa = self.__acc_ax_cursor.get_xdata()
+                        temp_ttc = self.__ttc_ax_cursor.get_xdata()
                         self.__vel_ax_cursor.set_data([[], []])
                         self.__acc_ax_cursor.set_data([[], []])
+                        self.__ttc_ax_cursor.set_data([[], []])
 
                         # auto-scale axes (without cursor)
                         self.__axes_v_t.relim()
@@ -735,16 +1147,20 @@ class ScenarioArchitect:
                         self.__axes_v_s.autoscale_view(True, True, True)
                         self.__axes_a_t.relim()
                         self.__axes_a_t.autoscale_view(True, True, True)
+                        self.__axes_ssm.relim()
+                        self.__axes_ssm.autoscale_view(True, True, True)
 
-                        # force lower limits on axes (has to be done in every iteration, since autoscale is borken else)
+                        # force lower limits on axes (has to be done in every iteration, since autoscale is broken else)
                         self.__axes_a_t.set_xlim(left=0.0, auto=True)
                         self.__axes_v_t.set_ylim(bottom=0.0, auto=True)
                         self.__axes_v_s.set_xlim(left=0.0, auto=True)
                         self.__axes_v_s.set_ylim(bottom=0.0, auto=True)
+                        self.__axes_ssm.set_xlim(left=0.0, auto=True)
 
                         # restore cursors
                         self.__vel_ax_cursor.set_data(temp_va, self.__axes_v_t.get_ylim())
                         self.__acc_ax_cursor.set_data(temp_aa, self.__axes_a_t.get_ylim())
+                        self.__ttc_ax_cursor.set_data(temp_ttc, self.__axes_ssm.get_ylim())
 
                     # highlight selected data row (thicker line)
                     if self.__radio.value_selected in obj.id:
@@ -770,8 +1186,227 @@ class ScenarioArchitect:
                                   text_list=[],
                                   id_in=obj.id + "_all")
 
+        # ---------------------------- generate safety evaluation for scene --------------------------------------------
+        time_stamps = None
+        safety_dynamic = None
+        safety_static = None
+        if self.__ent_cont[2].TYPE_VEHICLE and self.__ent_cont[2].TYPE_EGO and self.__ent_cont[2].data_exp is not None:
+            # get maximum time present in ego-trajectory
+            # calculate temporal coordinate (for temporal plots)
+            t = np.concatenate(([0], np.cumsum(np.divide(np.diff(self.__ent_cont[2].data_exp[:, 0]),
+                                                         self.__ent_cont[2].data_exp[:-1, 5],
+                                                         out=np.full(self.__ent_cont[2].data_exp[:-1, 5].shape[0],
+                                                                     np.inf),
+                                                         where=self.__ent_cont[2].data_exp[:-1, 5] != 0))))
+
+            time_stamps = np.arange(0.0, max(t), self.__config.getfloat('SAFETY', 'ssm_increment'))
+
+            safety_dynamic, safety_static = self.get_safety(time_stamps=time_stamps)
+
+        # plot safety, if not none
+        if safety_dynamic is not None and safety_static is not None:
+            self.__safety_dyn_safe.set_data([time_stamps,
+                                             [12.5 if s is not None and s else None for s in safety_dynamic]])
+            self.__safety_dyn_unsafe.set_data([time_stamps,
+                                               [12.5 if s is not None and not s else None for s in safety_dynamic]])
+            self.__safety_stat_safe.set_data([time_stamps,
+                                              [7.5 if s is not None and s else None for s in safety_static]])
+            self.__safety_stat_unsafe.set_data([time_stamps,
+                                                [7.5 if s is not None and not s else None for s in safety_static]])
+
+        else:
+            self.__safety_dyn_safe.set_data([[], []])
+            self.__safety_stat_safe.set_data([[], []])
+
+        # update plots
         self.__fig_time.canvas.draw_idle()
         self.__fig_main.canvas.draw_idle()
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # - SAFETY GROUND TRUTH --------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def get_safety(self,
+                   time_stamps: np.ndarray):
+        """
+        Calculate a safety rating (dynamic and static environment) at the given time-stamps. Each time-stamp is mapped
+        to one of the following ratings:
+            - True:     associated time-stamp is safe
+            - False:    associated time-stamp is unsafe
+            - None:     associated time-stamp does not hold any rating (can be both)
+
+        :param time_stamps:
+        :return:
+        """
+
+        # load relevant data
+        veh_width = self.__config.getfloat('VEHICLE', 'veh_width')
+        veh_length = self.__config.getfloat('VEHICLE', 'veh_length')
+        drag_coeff = self.__config.getfloat('VEHICLE', 'drag_coeff')
+        m_veh = self.__config.getfloat('VEHICLE', 'm_veh')
+        ttc_crit = self.__config.getfloat('SAFETY', 'ttc_crit')
+        dss_crit = self.__config.getfloat('SAFETY', 'dss_crit')
+        ttc_undefined = self.__config.getfloat('SAFETY', 'ttc_undefined')
+        dss_undefined = self.__config.getfloat('SAFETY', 'dss_undefined')
+        ssm_safety = self.__config.get('SAFETY', 'ssm_safety')
+        si = self.__config.getfloat('SAFETY', 'shape_inflation')
+        acc_factor = self.__config.getfloat('SAFETY', 'comb_acc_factor')
+        turn_radius_unsafe = self.__config.getfloat('SAFETY', 'turn_radius_unsafe')
+        turn_radius_undefined = self.__config.getfloat('SAFETY', 'turn_radius_undefined')
+        ax_max = max(self.__ggv[:, 1])
+        ay_max = max(self.__ggv[:, 2])
+
+        # check if all required parameters have been set (bounds, ego vehicle)
+        if not ((self.__ent_cont[0].TYPE_BOUND and self.__ent_cont[0].get_mode_coord() is not None
+                 and len(self.__ent_cont[0].get_mode_coord()) >= 3)
+                and (self.__ent_cont[1].TYPE_BOUND and self.__ent_cont[1].get_mode_coord() is not None
+                     and len(self.__ent_cont[1].get_mode_coord()) >= 3)
+                and (self.__ent_cont[2].TYPE_VEHICLE and self.__ent_cont[2].TYPE_EGO
+                     and self.__ent_cont[2].data_exp is not None)):
+            return None, None
+
+        # init safety arrays
+        safety_dynamic = [None] * len(time_stamps)
+        safety_static = [True] * len(time_stamps)
+
+        # setup shapely geometry for track (extend at start and end)
+        ds1 = np.diff(self.__ent_cont[0].get_mode_coord()[:2, :], axis=0)[0]
+        ds2 = np.diff(self.__ent_cont[0].get_mode_coord()[-2:, :], axis=0)[0]
+        ds3 = np.diff(self.__ent_cont[1].get_mode_coord()[:2, :], axis=0)[0]
+        ds4 = np.diff(self.__ent_cont[1].get_mode_coord()[-2:, :], axis=0)[0]
+        bound_outline = np.vstack((self.__ent_cont[0].get_mode_coord()[0, :] - ds1 * 5.0 / np.hypot(ds1[0], ds1[1]),
+                                   self.__ent_cont[0].get_mode_coord(),
+                                   self.__ent_cont[0].get_mode_coord()[-1, :] + ds2 * 5.0 / np.hypot(ds2[0], ds2[1]),
+                                   self.__ent_cont[1].get_mode_coord()[-1, :] + ds4 * 5.0 / np.hypot(ds4[0], ds4[1]),
+                                   np.flipud(self.__ent_cont[1].get_mode_coord()),
+                                   self.__ent_cont[1].get_mode_coord()[0, :] - ds3 * 5.0 / np.hypot(ds3[0], ds3[1])))
+
+        track_polygon = shapely.geometry.Polygon([list(bound_outline[i, :]) for i in range(bound_outline.shape[0])])
+
+        for i, t_in in enumerate(time_stamps):
+            # -- get ego data for desired time-stamp -------------------------------------------------------------------
+            # get global data for ego-vehicle (pos, heading, curv, vel, acc)
+            data_ego_global = self.__ent_cont[2].get_timestamp_info(t_in=t_in)
+            pos, heading, curv, vel, a_lon_used = data_ego_global
+
+            # get lane based data for ego-vehicle (pos_lane, heading, vel)
+            data_ego_lane = self.__ent_cont[2].get_timestamp_info_lanebased(t_in=t_in)
+
+            # -- safety in dynamic environment (other vehicles, via TTC) -----------------------------------------------
+            # for all entities
+            tmp_safety_dyn = True
+            for obj in self.__ent_cont:
+                # if entity is a vehicle
+                if obj.TYPE_VEHICLE and not obj.TYPE_EGO:
+                    if obj.get_mode_coord() is not None and obj.data_ssm is not None:
+                        # interpolate lane pos for object vehicle
+                        pos_lane, _, vel_tmp = obj.get_timestamp_info_lanebased(t_in=t_in)
+
+                        # if time-track of object vehicle exceeded, set "safe" rating
+                        if vel_tmp is None:
+                            safety = True
+
+                        else:
+                            # get safety evaluation
+                            if ssm_safety == 'ttc':
+                                # interpolate TTC for current time-stamp
+                                ttc = np.interp(t_in, obj.data_ssm[:, 0], obj.data_ssm[:, 1])
+                                safety = helper_funcs.src.ssm.evaluation_ttc(ttc=ttc,
+                                                                             lane_pos_obj=pos_lane,
+                                                                             lane_pos_ego=data_ego_lane[0],
+                                                                             veh_width=veh_width,
+                                                                             undefined_ttc=ttc_undefined,
+                                                                             crit_ttc=ttc_crit)
+                            elif ssm_safety == 'dss':
+                                # interpolate DSS for current time-stamp
+                                dss = np.interp(t_in, obj.data_ssm[:, 0], obj.data_ssm[:, 2])
+                                safety = helper_funcs.src.ssm.evaluation_dss(dss=dss,
+                                                                             lane_pos_obj=pos_lane,
+                                                                             lane_pos_ego=data_ego_lane[0],
+                                                                             veh_width=veh_width,
+                                                                             undefined_dss=dss_undefined,
+                                                                             crit_dss=dss_crit)
+
+                            else:
+                                raise ValueError('Specified "ssm_safety" parameter (' + str(ssm_safety)
+                                                 + ') is not supported!')
+
+                        # update safety rating of current step
+                        if safety is not None and not safety:
+                            # if unsafe for this vehicle, set globally as unsafe
+                            tmp_safety_dyn = False
+                            break
+                        elif safety is None and tmp_safety_dyn:
+                            # if not set to 'False' for any object and undefined for this vehicle
+                            tmp_safety_dyn = None
+
+            safety_dynamic[i] = tmp_safety_dyn
+
+            # -- safety in static environment --------------------------------------------------------------------------
+            tmp_safety_stat = True
+
+            # -- collisions with wall --
+            # check for collisions with wall (one larger --> any rating allowed, one actual size --> must be unsafe)
+            veh_polygon = (matlib.repmat([[pos[0]], [pos[1]]], 1, 4)
+                           + np.matmul([[np.cos(heading + np.pi / 2), -np.sin(heading + np.pi / 2)],
+                                        [np.sin(heading + np.pi / 2), np.cos(heading + np.pi / 2)]],
+                                       [[-veh_length / 2, veh_length / 2, veh_length / 2, -veh_length / 2],
+                                        [-veh_width / 2, -veh_width / 2, veh_width / 2, veh_width / 2]]))
+
+            veh_polygon = shapely.geometry.Polygon([list(veh_polygon[:, i]) for i in range(veh_polygon.shape[1])])
+
+            # if acceleration with safety factor is exceeded, rate unsafe and skip further evaluations
+            if not track_polygon.contains(veh_polygon):
+                safety_static[i] = False
+                continue
+
+            else:
+                # if actual vehicle shape is within track, check if larger shape exceeds track
+                veh_polygon = (matlib.repmat([[pos[0]], [pos[1]]], 1, 4)
+                               + np.matmul([[np.cos(heading + np.pi / 2) * si, -np.sin(heading + np.pi / 2) * si],
+                                            [np.sin(heading + np.pi / 2) * si, np.cos(heading + np.pi / 2) * si]],
+                                           [[-veh_length / 2, veh_length / 2, veh_length / 2, -veh_length / 2],
+                                            [-veh_width / 2, -veh_width / 2, veh_width / 2, veh_width / 2]]))
+                veh_polygon = shapely.geometry.Polygon([list(veh_polygon[:, i]) for i in range(veh_polygon.shape[1])])
+
+                if not track_polygon.contains(veh_polygon):
+                    tmp_safety_stat = None
+
+            # -- friction exceeded --
+            # lateral acceleration based on curvature and velocity
+            a_lat_used = np.power(vel, 2) * curv
+
+            # drag reduces requested deceleration but increases requested acceleration at the tire
+            a_lon_used += np.power(vel, 2) * drag_coeff / m_veh
+
+            # get used percentage of allowed tire acceleration including safety factor
+            a_comb_used_perc = np.sqrt((np.power(np.abs(a_lon_used) / (ax_max * acc_factor), 2)
+                                        + np.power(np.abs(a_lat_used) / (ay_max * acc_factor), 2)))
+
+            # if acceleration with safety factor is exceeded, rate unsafe and skip further evaluations
+            if a_comb_used_perc > 1.0:
+                safety_static[i] = False
+                continue
+
+            elif tmp_safety_stat is not None:
+                # get used percentage of allowed tire acceleration
+                a_comb_used_perc = np.sqrt((np.power(np.abs(a_lon_used) / ax_max, 2)
+                                            + np.power(np.abs(a_lat_used) / ay_max, 2)))
+
+                if a_comb_used_perc > 1.0:
+                    tmp_safety_stat = None
+
+            # -- kinematic limits --
+            if abs(curv) > (1 / turn_radius_unsafe):
+                safety_static[i] = False
+                continue
+
+            elif abs(curv) > (1 / turn_radius_undefined):
+                tmp_safety_stat = None
+
+            safety_static[i] = tmp_safety_stat
+
+        return safety_dynamic, safety_static
 
     # ------------------------------------------------------------------------------------------------------------------
     # - SUPPORTING FUNCTIONS -------------------------------------------------------------------------------------------
@@ -806,11 +1441,11 @@ class ScenarioArchitect:
         # -- calculate trajectory information for every vehicle (will be used later for export) --
         veh_data = {}
         for obj in self.__ent_cont:
+            # calculate trajectory information
             if obj.TYPE_VEHICLE:
                 t = 0.0
                 while True:
                     t_data = obj.get_timestamp_info(t_in=t)
-
                     # When no further data points are present, quit
                     if t_data is not None and t_data[3] is not None:
                         if obj.id not in veh_data.keys():
@@ -822,6 +1457,32 @@ class ScenarioArchitect:
 
                     # increment time
                     t += self.__config.getfloat('FILE_EXPORT', 'export_time_increment')
+
+        # -- calculate safety ground truth --
+        # get safety rating
+        t_safe = np.arange(0, list(veh_data.values())[0].shape[0]) * self.__config.getfloat('SAFETY', 'ssm_increment')
+        safety_dynamic, safety_static = self.get_safety(time_stamps=t_safe)
+
+        # modify safety score in order to represent trajectory planning horizon
+        t_plan = self.__config.getfloat('FILE_EXPORT', 'export_time_traj_horizon')
+
+        # loop backwards, holding "False" and "None" for duration of planning horizon (False dominates None)
+        t_false = np.inf
+        t_none = np.inf
+        for i in reversed(range(len(t_safe))):
+            if safety_static[i] is not None and not safety_static[i]:
+                # if contains False value, store time-stamp where this segment is not part of trajectory anymore
+                t_false = t_safe[i] - t_plan
+
+            elif safety_static[i] is None:
+                # if None, store last None value
+                t_none = t_safe[i] - t_plan
+
+            if t_safe[i] >= t_false:
+                safety_static[i] = False
+
+            elif t_safe[i] >= t_none:
+                safety_static[i] = None
 
         # -- check if export is valid --
         if self.__ent_cont[0].data_coord is None or self.__ent_cont[1].data_coord is None:
@@ -872,7 +1533,7 @@ class ScenarioArchitect:
             ego_traj = veh_data['veh_1'][i:(i + n_traj_export), :]
 
             # generate object array (information about all objects in the scene)
-            # each object holds: [id, [x, y, heading, obj_radius, vel]]
+            # each object holds: [id, [x, y, heading, vel, length, width]]
             obj_array = []
             for obj in veh_data.keys():
                 if obj != 'veh_1' and veh_data[obj].shape[0] > i:
@@ -887,6 +1548,10 @@ class ScenarioArchitect:
             ego_traj_em = helper_funcs.src.calc_brake_emergency.calc_brake_emergency(traj=ego_traj,
                                                                                      ggv=self.__ggv)
 
+            # check for safe end state (if activated in config)
+            if self.__config.getboolean('SAFETY', 'check_safe_end_state') and ego_traj_em[-1, 4] > 1.0:
+                safety_static[i] = False
+
             # write to file
             helper_funcs.src.data_export.write_timestamp(file_path=file_path.name.replace('.saa', '.scn'),
                                                          time=i * self.__config.getfloat('FILE_EXPORT',
@@ -898,7 +1563,9 @@ class ScenarioArchitect:
                                                          acc=veh_data['veh_1'][i, 5],
                                                          ego_traj=ego_traj,
                                                          ego_traj_em=ego_traj_em,
-                                                         object_array=obj_array)
+                                                         object_array=obj_array,
+                                                         safety_dyn=safety_dynamic[i],
+                                                         safety_stat=safety_static[i])
 
         # -- store pickle file in order to load the scenario for further edits --
         self.save_pckl(file_path=file_path.name.replace('.saa', '.sas'))
@@ -995,7 +1662,10 @@ class ScenarioArchitect:
                                                        a_t_axis=self.__axes_a_t,
                                                        v_t_axis=self.__axes_v_t,
                                                        v_s_axis=self.__axes_v_s,
-                                                       color_str=self.get_veh_color(int(key[-1]))))
+                                                       ssm_t_axis=self.__axes_ssm,
+                                                       color_str=self.get_veh_color(int(key[-1])),
+                                                       veh_width=self.__config.getfloat('VEHICLE', 'veh_width'),
+                                                       veh_length=self.__config.getfloat('VEHICLE', 'veh_length')))
 
                     # if bound
                     else:
@@ -1086,7 +1756,7 @@ class ScenarioArchitect:
         root = tk.Tk()
         root.withdraw()
         file_path = filedialog.askopenfilename(defaultextension=".csv",
-                                               filetypes=(("CSV-File", "*.csv*"), ("All Files", "*.*")),)
+                                               filetypes=(("CSV-File", "*.csv*"), ("All Files", "*.*")), )
 
         if file_path != '':
             # detect used delimiter and skip comment lines (without any of the delimiters)
@@ -1319,8 +1989,8 @@ class ScenarioArchitect:
         if self.__vel_mod_protect.get(self.__radio.value_selected, False):
             answer = messagebox.askyesno("Warning", "The velocity profile of entity " + self.__radio.value_selected
                                          + " has been changed manually! If you move the mouse in the main axis, a new"
-                                         " velocity profile is calculated. All manual data will be lost!\n\n"
-                                         "Do you want to keep the manual velocity profile?")
+                                           " velocity profile is calculated. All manual data will be lost!\n\n"
+                                           "Do you want to keep the manual velocity profile?")
             if not answer:
                 self.__vel_mod_protect.pop(self.__radio.value_selected, None)
             else:
@@ -1405,10 +2075,11 @@ class ScenarioArchitect:
             self.update_plot(hover_mode=True)
 
         # check if in any of the axes
-        if event.inaxes == self.__axes_v_t or event.inaxes == self.__axes_a_t:
+        if event.inaxes == self.__axes_v_t or event.inaxes == self.__axes_a_t or event.inaxes == self.__axes_ssm:
             # update cursor in velocity window
             self.__vel_ax_cursor.set_data([event.xdata, event.xdata], self.__axes_v_t.get_ylim())
             self.__acc_ax_cursor.set_data([event.xdata, event.xdata], self.__axes_a_t.get_ylim())
+            self.__ttc_ax_cursor.set_data([event.xdata, event.xdata], self.__axes_ssm.get_ylim())
             self.__fig_time.canvas.draw_idle()
 
             # update cursor data in main window

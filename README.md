@@ -8,6 +8,9 @@ be used for safety assessment metric evaluations or other benchmarks.
 ### Documentation
 The documentation of the project can be found [here](https://scenarioarchitect.readthedocs.io/).
 
+### Acknowledgements
+Regina Harrer contributed during her Project Thesis to the calculation of the Time to Collision (TTC) score.
+
 ### Contributions
 [1] T. Stahl and J. Betz, “An Open-Source Scenario Architect for Autonomous Vehicles,” 
 in 2020 Fifteenth International Conference on Ecological Vehicles and Renewable Energies (EVER), 2020.\

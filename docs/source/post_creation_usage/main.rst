@@ -63,6 +63,15 @@ In order to extract a certain timestamp, insert the following line (replace inpu
     time, pos, heading, curv, vel, acc, ego_traj, object_array, time_f = \
         stt.get_scene_timesample.get_scene_timesample(file_path=YOUR_PATH, t_in=1.234)
 
+In order to extract a certain timestamp with its expected safety rating [True, False, None], insert the following line
+(replace input parameters):
+
+.. code-block:: python
+
+    time, pos, heading, curv, vel, acc, ego_traj, ego_traj_em, object_list, time_f, safety_dyn, safety_stat = \
+        stt.get_scene_timesample.get_scene_timesample(file_path=YOUR_PATH, t_in=1.234, append_safety=True)
+
+
 .. hint:: In order to emulate real-time playback on a vehcile, keep track of the passed time and call the function above
     iteratively, e.g.:
 

@@ -23,6 +23,10 @@ These scenarios can then be used for safety assessment metric evaluations or oth
    using_the_GUI/main.rst
    post_creation_usage/main.rst
 
+Acknowledgements
+=============================================================
+Regina Harrer contributed during her Project Thesis to the calculation of the Time to Collision (TTC) score.
+
 Contributions
 =============================================================
 

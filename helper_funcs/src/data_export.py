@@ -10,7 +10,7 @@ Functions used to write a given data structure to a file.
 """
 
 # header string - string to be written to the header (titles for the stored columns)
-HEADER_STR = "time;x;y;heading;curv;vel;acc;ego_traj;ego_traj_em;object_array"
+HEADER_STR = "time;x;y;heading;curv;vel;acc;ego_traj;ego_traj_em;object_array;safety_dyn;safety_stat"
 
 
 def init_exportfile(file_path: str,
@@ -37,7 +37,9 @@ def write_timestamp(file_path: str,
                     acc: float,
                     ego_traj: np.ndarray,
                     ego_traj_em: np.ndarray,
-                    object_array: list) -> None:
+                    object_array: list,
+                    safety_dyn: bool,
+                    safety_stat: bool) -> None:
     """
     Inputs:
     - file_path:    string holding the path to the scene data file to be generated
@@ -52,6 +54,8 @@ def write_timestamp(file_path: str,
     - ego_traj_em:  planned emergency-ego-trajectory starting at the current position (x, y, heading, curv, vel, acc)
     - object_array: information about the vehicles in the scene (list of lists, each object holding an ID-string and a
                     list holding [x, y, heading, vel, length, width])
+    - safety_dyn:   ground truth for safety in a dynamic environment (i.e. w.r.t. other vehicles)
+    - safety_stat:  ground truth for safety in a static environment (i.e. w.r.t. bounds, acceleration limits, ...)
     """
 
     # write line to file (order should match with the "HEADER_STR")
@@ -66,7 +70,9 @@ def write_timestamp(file_path: str,
                  + str(acc) + ";"
                  + json.dumps(ego_traj, default=default) + ";"
                  + json.dumps(ego_traj_em, default=default) + ";"
-                 + json.dumps(object_array, default=default))
+                 + json.dumps(object_array, default=default) + ";"
+                 + json.dumps(safety_dyn) + ";"
+                 + json.dumps(safety_stat))
 
 
 def default(obj):

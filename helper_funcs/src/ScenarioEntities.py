@@ -7,7 +7,6 @@ import matplotlib.patheffects as patheffcts
 
 import scenario_testing_tools
 
-
 """
 Python version: 3.7
 Created by: Tim Stahl
@@ -25,6 +24,7 @@ class Entity:
 
     TYPE_BOUND = False
     TYPE_VEHICLE = False
+    TYPE_EGO = False
 
     # toggle mode (temporary mode during edit)
     tmp_mode = False
@@ -114,6 +114,7 @@ class Vehicle(Entity):
                  a_t_axis: plt.axes,
                  v_t_axis: plt.axes,
                  v_s_axis: plt.axes,
+                 ssm_t_axis: plt.axes,
                  veh_length: float = 4.7,
                  veh_width: float = 2.0,
                  color_str: str = 'blue',
@@ -127,6 +128,7 @@ class Vehicle(Entity):
         :param a_t_axis:    axes handle for the acceleration over time plot
         :param v_t_axis:    axes handle for the velocity over time plot
         :param v_s_axis:    axes handle for the velocity over path plot
+        :param ssm_t_axis:  axes handle for the SSM over time plot
         :param veh_length:  length of vehicle in m
         :param veh_width:   width of vehicle in m
         :param color_str:   matplotlib color string (either hash or matplotlib names color)
@@ -148,6 +150,9 @@ class Vehicle(Entity):
         # export data (numpy array with columns: s, x, y, psi, kappa, vx, ax)
         self.data_exp = None
 
+        # surrogate safety metric data
+        self.data_ssm = None
+
         # vehicle dimensions
         self.__length = veh_length
         self.__width = veh_width
@@ -164,11 +169,20 @@ class Vehicle(Entity):
         self.__ay_t_handle, = a_t_axis.plot([], [], ':', lw=1, color=color_str, zorder=99, label='$a_y$')
 
         if type_ego:
-            a_t_axis.legend(bbox_to_anchor=(1, 1.02), loc="lower right", borderaxespad=0, ncol=3)
+            a_t_axis.legend(bbox_to_anchor=(1, 1.02), loc="lower right", borderaxespad=0, ncol=3, columnspacing=0.6,
+                            handlelength=1, handletextpad=0.1)
 
         # velocity plot handles (over time and path)
         self.__vx_t_handle, = v_t_axis.plot([], [], lw=1, color=color_str, zorder=99)
         self.__vx_s_handle, = v_s_axis.plot([], [], lw=1, color=color_str, zorder=99)
+
+        # ttc plot handles
+        self.__ttc_t_handle, = ssm_t_axis.plot([], [], ':', lw=1, color=color_str, zorder=99, label='TTC')
+        self.__dss_t_handle, = ssm_t_axis.plot([], [], lw=1, color=color_str, zorder=99, label='DSS')
+
+        if type_ego:
+            ssm_t_axis.legend(bbox_to_anchor=(1, 1.02), loc="lower right", borderaxespad=0, ncol=4, columnspacing=0.6,
+                              handlelength=1, handletextpad=0.1)
 
         # initialize patch handle for vehicle plots and corresponding text labels
         self.__veh_ptch_handle = {}
@@ -216,6 +230,40 @@ class Vehicle(Entity):
         else:
             return None
 
+    def get_timestamp_info_lanebased(self,
+                                     t_in: float) -> tuple or None:
+        """
+        Extract all available information about a given time stamp (interpolate between stored data points). The
+        information is lane-based. (For example: calculation of the lane-based values of the ego vehicle, needed for
+        ttc evaluation)
+
+        :param t_in:        time-stamp to be returned (interpolated linearly between stored values)
+        :returns (pos,      position [x, y]
+                  heading,  heading angle
+                  vel)      velocity along heading
+        """
+
+        if self.data_coord is not None and self.data_exp is not None:
+            # calculate time values for velocity profile
+            t = np.concatenate(([0], np.cumsum(np.divide(np.diff(self.data_ssm[:, 3]), self.data_ssm[:-1, 6],
+                                                         out=np.full(self.data_ssm[:-1, 6].shape[0], np.inf),
+                                                         where=self.data_ssm[:-1, 6] != 0))))
+
+            if t_in > max(t):
+                pos_idx = len(t) - 1
+                pos = self.data_ssm[pos_idx, 3:5]
+                heading = self.data_ssm[pos_idx, 5]
+                return pos, heading, None
+            else:
+                pos = [np.interp(t_in, t, self.data_ssm[:, 3]), np.interp(t_in, t, self.data_ssm[:, 4])]
+                heading = scenario_testing_tools.interp_heading.interp_heading(heading=self.data_ssm[:, 5],
+                                                                               t_series=t,
+                                                                               t_in=t_in)
+                vel = np.interp(t_in, t, self.data_ssm[:, 6])
+                return pos, heading, vel
+        else:
+            return None
+
     def highlight_pose(self,
                        t_in: float or None) -> None:
         """
@@ -228,6 +276,10 @@ class Vehicle(Entity):
         t_info = None
         if t_in is not None:
             t_info = self.get_timestamp_info(t_in=t_in)
+
+            # if requested t exceeds time-series (t_info[4] = None), do not plot vehicle
+            if t_info is not None and t_info[4] is None:
+                t_info = None
 
         if t_info is not None:
             self.plot_vehicle(pos=t_info[0],
@@ -462,6 +514,8 @@ class Vehicle(Entity):
             self.__ay_t_handle.set_data([[], []])
             self.__vx_t_handle.set_data([[], []])
             self.__vx_s_handle.set_data([[], []])
+            self.__ttc_t_handle.set_data([], [])
+            self.__dss_t_handle.set_data([], [])
 
         else:
             # calculate temporal coordinate (for temporal plots)
@@ -486,6 +540,8 @@ class Vehicle(Entity):
             self.__ay_t_handle.set_data([t, ay])
             self.__vx_t_handle.set_data([t, self.data_exp[:, 5]])
             self.__vx_s_handle.set_data([self.data_exp[:, 0], self.data_exp[:, 5]])
+            self.__ttc_t_handle.set_data([self.data_ssm[:, 0], self.data_ssm[:, 1]])
+            self.__dss_t_handle.set_data([self.data_ssm[:, 0], self.data_ssm[:, 2] / 10.0])
 
     def change_temporal_plot_lw(self,
                                 lw: float = 1.0) -> None:
@@ -502,6 +558,8 @@ class Vehicle(Entity):
         self.__ay_t_handle.set_lw(lw)
         self.__vx_t_handle.set_lw(lw)
         self.__vx_s_handle.set_lw(lw)
+        self.__ttc_t_handle.set_lw(lw)
+        self.__dss_t_handle.set_lw(lw)
 
     def __del__(self) -> None:
         """
@@ -516,6 +574,7 @@ class Vehicle(Entity):
         self.__vx_t_handle.remove()
         self.__vx_s_handle.remove()
         self.__veh_plane_handle.remove()
+        self.__ttc_t_handle.remove()
 
         for handle in self.__veh_ptch_handle.values():
             handle.remove()
