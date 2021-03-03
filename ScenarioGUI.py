@@ -187,7 +187,7 @@ class ScenarioArchitect:
         self.__axes_ssm.set_zorder(self.__axes_ssm.get_zorder() + 1)  # set parent axis zorder higher for event handler
         self.__axes_ssm2.set_ylim(bottom=-5.0, top=15.0)
         self.__axes_ssm2.set_yticks([7.5, 12.5])
-        self.__axes_ssm2.set_yticklabels(["static\nsafety", "dynamic\nsafety"])
+        self.__axes_ssm2.set_yticklabels(["Static\nsafety", "Dynamic\nsafety"])
 
         # -- change axis location of __axes_v_t and __axes_ssm--
         pos_acc_ax = self.__axes_a_t.get_position()
@@ -263,9 +263,9 @@ class ScenarioArchitect:
 
         # handles for automatic safety rating in scenario
         self.__safety_dyn_safe, = self.__axes_ssm.plot([], [], lw=10, color=self.__color_dict["TUM_green"], alpha=0.5,
-                                                       zorder=999, label="  safe ")
+                                                       zorder=999, label="  Safe ")
         self.__safety_dyn_unsafe, = self.__axes_ssm.plot([], [], lw=10, color=self.__color_dict["TUM_orange"],
-                                                         alpha=0.5, zorder=999, label="  unsafe")
+                                                         alpha=0.5, zorder=999, label="  Unsafe")
         self.__safety_stat_safe, = self.__axes_ssm.plot([], [], lw=10, color=self.__color_dict["TUM_green"], alpha=0.5,
                                                         zorder=999)
         self.__safety_stat_unsafe, = self.__axes_ssm.plot([], [], lw=10, color=self.__color_dict["TUM_orange"],
@@ -358,7 +358,7 @@ class ScenarioArchitect:
         # Scaling slider
         self.__sld_x_axis = Slider(self.__fig_main.add_axes([0.1, 0.02, 0.6, 0.03],
                                                             facecolor=self.__config.get('VISUAL', 'btn_color')),
-                                   label='scale',
+                                   label='Scale',
                                    valmin=self.__config.getfloat('VISUAL', 'delta_xy'),
                                    valmax=self.__config.getfloat('VISUAL', 'max_x_scale'),
                                    valinit=self.__config.getfloat('VISUAL', 'default_x_scale'),
@@ -812,7 +812,8 @@ class ScenarioArchitect:
                     s = np.concatenate(([0], np.cumsum(np.sqrt(np.sum(np.power(np.diff(dpoints, axis=0), 2), axis=1)))))
 
                     # export s, x, y, psi, kappa, vx, ax (if data available and changed)
-                    if (obj.data_vel_coord is None or self.__pidx_main is not None
+                    if (obj.data_vel_coord is None
+                            or (self.__pidx_main is not None and obj == self.__radio.value_selected)
                             or not np.array_equal(obj.get_mode_coord(), obj.data_vel_coord)):
                         obj.data_exp = np.zeros((psi.shape[0], 7))
                         obj.data_exp[:, 0:5] = np.column_stack((s, dpoints, psi, kappa))
