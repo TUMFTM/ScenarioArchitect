@@ -134,10 +134,10 @@ def get_scene_timesample(file_path: str,
         # -- extract values at current position ------------------------------------------------------------------------
         time = time_f[idx]
         pos = [float(line_prev[header.index("x")]), float(line_prev[header.index("y")])]
-        heading = line_prev[header.index("heading")]
-        curv = line_prev[header.index("curv")]
-        vel = line_prev[header.index("vel")]
-        acc = line_prev[header.index("acc")]
+        heading = float(line_prev[header.index("heading")])
+        curv = float(line_prev[header.index("curv")])
+        vel = float(line_prev[header.index("vel")])
+        acc = float(line_prev[header.index("acc")])
         ego_traj = np.array(json.loads(line_prev[header.index("ego_traj")]))
         if 'ego_traj_em' in header:
             ego_traj_em = np.array(json.loads(line_prev[header.index("ego_traj_em")]))
