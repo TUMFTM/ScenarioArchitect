@@ -988,6 +988,7 @@ class ScenarioArchitect:
                             # store vx and ax to array
                             obj.data_exp[:, 5] = vx
                             obj.data_exp[:, 6] = np.concatenate((ax, [0]))
+
                         else:
                             # recalculate ax for given vx profile
                             ax = tph.calc_ax_profile.calc_ax_profile(vx_profile=obj.data_exp[:, 5],
@@ -1013,11 +1014,23 @@ class ScenarioArchitect:
                             # init variable data_ssm (time, TTC, DSS, s_pos, n_pos, heading, velocity)
                             obj.data_ssm = np.zeros((n_steps, 7))
 
+                            # if ego vehicle, calculate braking dist for every point (used for safety metrics)
+                            if obj.TYPE_EGO and obj.data_exp.shape[0] > 5:
+                                # init brake storage
+                                obj.temp_container['brake_dist'] = np.column_stack([[0.0] * obj.data_exp.shape[0],
+                                                                                    [None] * obj.data_exp.shape[0]])
+
+                                for i in range(obj.data_exp.shape[0] - 5):
+                                    obj.temp_container['brake_dist'][i, 0] = t[i]
+                                    obj.temp_container['brake_dist'][i, 1] = helper_funcs.src.calc_brake_emergency \
+                                        .calc_brake_dist(traj=obj.data_exp[i:, 1:],
+                                                         ggv=self.__ggv)
+
                         else:
                             # (re)init variables if no velocity profile exists
                             obj.data_ssm = np.zeros((obj.data_exp.shape[0], 7))
 
-                        # -- calculate the time to collision --
+                        # -- calculate the surrogate safety metric(s) --
                         if calc_center_line is not None and vehicle_ego_info is not None \
                                 and max(obj.data_exp[:, 5]) != 0.0:
 
@@ -1045,17 +1058,23 @@ class ScenarioArchitect:
                             obj.data_ssm[:, 0] = vehicle_info[:, 0]
                             obj.data_ssm[:, 3:] = vehicle_info[:, 1:]
 
-                            # Calculate the time to collision when the ego_vehicle and another vehicle exists
+                            # calculate the time to collision when the ego_vehicle and another vehicle exists
                             if vehicle_info is not None and vehicle_ego_info is not None and not obj.TYPE_EGO and \
                                     obj.data_ssm.shape[0] > 1:
 
-                                # Calculate the ttc for every timestamp
+                                # get ego stopping dist, if available
+                                ego_stopping_dist = None
+                                if self.__ent_cont[2].TYPE_EGO:
+                                    ego_stopping_dist = self.__ent_cont[2].temp_container.get('brake_dist', None)
+
+                                # calculate the ttc for every timestamp
                                 ttc, dss = helper_funcs.src.ssm.calc_ssm(
                                     pos_ego_stamps=vehicle_ego_info,
                                     pos_vehicle_stamps=vehicle_info,
                                     veh_length=self.__config.getfloat('VEHICLE', 'veh_length'),
                                     reaction_time=self.__config.getfloat('SAFETY', 'dds_reaction_t'),
-                                    maximum_acc=np.max(self.__ggv[:, 1:])
+                                    maximum_acc=np.max(self.__ggv[:, 1:]),
+                                    ego_stopping_dist=ego_stopping_dist
                                 )
 
                                 # save tht ttc value in data_exp
@@ -1254,6 +1273,7 @@ class ScenarioArchitect:
         acc_factor = self.__config.getfloat('SAFETY', 'comb_acc_factor')
         turn_radius_unsafe = self.__config.getfloat('SAFETY', 'turn_radius_unsafe')
         turn_radius_undefined = self.__config.getfloat('SAFETY', 'turn_radius_undefined')
+        acc_m_factor = self.__config.getfloat('SAFETY', 'mach_acc_factor')
         ax_max = max(self.__ggv[:, 1])
         ay_max = max(self.__ggv[:, 2])
 
@@ -1356,7 +1376,7 @@ class ScenarioArchitect:
 
             veh_polygon = shapely.geometry.Polygon([list(veh_polygon[:, i]) for i in range(veh_polygon.shape[1])])
 
-            # if acceleration with safety factor is exceeded, rate unsafe and skip further evaluations
+            # if vehicle is not contained in track, rate unsafe and skip rest of evaluations
             if not track_polygon.contains(veh_polygon):
                 safety_static[i] = False
                 continue
@@ -1384,7 +1404,7 @@ class ScenarioArchitect:
             a_comb_used_perc = np.sqrt((np.power(np.abs(a_lon_used) / (ax_max * acc_factor), 2)
                                         + np.power(np.abs(a_lat_used) / (ay_max * acc_factor), 2)))
 
-            # if acceleration with safety factor is exceeded, rate unsafe and skip further evaluations
+            # if acceleration with safety factor is exceeded, rate unsafe  and skip rest of evaluations
             if a_comb_used_perc > 1.0:
                 safety_static[i] = False
                 continue
@@ -1403,6 +1423,17 @@ class ScenarioArchitect:
                 continue
 
             elif abs(curv) > (1 / turn_radius_undefined):
+                tmp_safety_stat = None
+
+            # -- motor limits --
+            ax_max_lim = np.interp(vel, self.__ax_max_machines[:, 0], self.__ax_max_machines[:, 1])
+
+            # if violated, rate unsafe and skip rest of evaluations
+            if a_lon_used > ax_max_lim * acc_m_factor:
+                safety_static[i] = False
+                continue
+
+            elif a_lon_used > ax_max_lim:
                 tmp_safety_stat = None
 
             safety_static[i] = tmp_safety_stat

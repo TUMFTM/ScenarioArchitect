@@ -208,7 +208,8 @@ def timestamp_info(lane_based_poses: np.ndarray,
     :param covered_distance     s value for each position
     :param parm t_increment:    time-stamp to be returned (interpolated linearly between stored values)
     :param t_horizon:           maximum horizon the ttc is calculated for (i.e. limiting factor at very low speeds)
-    :returns parm vehicle_info: array with all values for the timestamps: time-stamp, s, n, heading, velocity
+    :returns:
+        * **vehicle_info** -    array with all values for the timestamps: time-stamp, s, n, heading, velocity
 
     """
 
@@ -243,7 +244,8 @@ def calc_ssm(pos_ego_stamps: np.ndarray,
              pos_vehicle_stamps: np.ndarray,
              veh_length: float = 3.0,
              reaction_time: float = 0.1,
-             maximum_acc: float = 10.0) -> tuple:
+             maximum_acc: float = 10.0,
+             ego_stopping_dist: np.ndarray = None) -> tuple:
     """
     Calculate Surrogate Safety Metrics (SSM) for a given pair of trajectories (ego and object vehicle).
 
@@ -252,7 +254,9 @@ def calc_ssm(pos_ego_stamps: np.ndarray,
     :param veh_length:           length of the vehicles
     :param reaction_time:        reaction time in seconds
     :param maximum_acc:          maximum (braking) acceleration assumed for both vehicles in m/s²
-    :returns dss:                Difference of Space distance and Stopping distance (DSS)
+    :param ego_stopping_dist     (optional) ego stop dist array, columns [t, dist], (calc based on maximum_acc else)
+    :returns:
+        * **dss** -              Difference of Space distance and Stopping distance (DSS)
 
     """
 
@@ -269,7 +273,11 @@ def calc_ssm(pos_ego_stamps: np.ndarray,
     if driving_same_direction:
 
         # iterate over number of shared points
+        ego_stop_dist_i = None
         for i in range(min(pos_vehicle_stamps.shape[0], pos_ego_stamps.shape[0])):
+            if ego_stopping_dist is not None:
+                # get closest stopping dist for given time
+                ego_stop_dist_i = ego_stopping_dist[np.argmin(abs(ego_stopping_dist[:, 0] - pos_ego_stamps[i, 0])), 1]
 
             # check if object vehicle is in front of ego (REGular or REVerse direction)
             in_front_reg = (pos_ego_stamps[i, 1] < (pos_vehicle_stamps[i, 1] - veh_length)
@@ -291,7 +299,8 @@ def calc_ssm(pos_ego_stamps: np.ndarray,
                                                    v_obj=pos_vehicle_stamps[i, 4],
                                                    dist=delta_s,
                                                    reaction_time=reaction_time,
-                                                   maximum_acc=maximum_acc)
+                                                   maximum_acc=maximum_acc,
+                                                   ego_stopping_dist=ego_stop_dist_i)
 
             else:
                 # check if overlapping
@@ -312,7 +321,8 @@ def time_to_collision(v_ego: float,
     :param v_ego:       velocity of the ego-vehicle
     :param v_obj:       velocity of the object-vehicle
     :param dist:        distance between the two vehicles (bumper to bumper)
-    :returns ttc:       time to collision
+    :returns:
+        * **ttc** -     time to collision
 
     """
 
@@ -330,7 +340,8 @@ def difference_space_stopping(v_ego: float,
                               v_obj: float,
                               dist: float,
                               reaction_time: float = 0.1,
-                              maximum_acc: float = 10.0) -> float:
+                              maximum_acc: float = 10.0,
+                              ego_stopping_dist: float = None) -> float:
     """
     Calculation of the Difference of Space distance and Stopping distance (DSS). This safety metric represents the
     remaining distance between two vehicles when assuming both vehicles immediately breaking hard.
@@ -339,13 +350,18 @@ def difference_space_stopping(v_ego: float,
     :param v_ego:               velocity of the ego-vehicle
     :param v_obj:               velocity of the object-vehicle
     :param dist:                distance between the two vehicles (bumper to bumper)
-    :param reaction_time:       reaction time in seconds
-    :param maximum_acc:         maximum (braking) acceleration assumed for both vehicles in m/s²
-    :returns dss:               Difference of Space distance and Stopping distance (DSS)
+    :param reaction_time:       (optional) reaction time in seconds
+    :param maximum_acc:         (optional) maximum (braking) acceleration assumed for both vehicles in m/s²
+    :param ego_stopping_dist    (optional) custom stopping dist of ego vehicle (calculated based on maximum_acc else)
+    :returns:
+        * **dss** -             Difference of Space distance and Stopping distance (DSS)
 
     """
 
-    dss = ((v_obj ** 2) / (2 * maximum_acc) + dist) - (v_ego * reaction_time + (v_ego ** 2) / (2 * maximum_acc))
+    if ego_stopping_dist is None:
+        ego_stopping_dist = (v_ego ** 2) / (2 * maximum_acc)
+
+    dss = ((v_obj ** 2) / (2 * maximum_acc) + dist) - (v_ego * reaction_time + ego_stopping_dist)
 
     return dss
 
@@ -371,7 +387,8 @@ def evaluation_ttc(ttc: float,
     :param veh_width:       the width of the vehicles [in m]
     :param undefined_ttc:   threshold of TTC being assumed undefined (any safety rating allowed) [in s]
     :param crit_ttc:        threshold of TTC being assumed critical [in s]
-    :return safety_flag:    boolean value or None (as stated in the description)
+    :return:
+        * **safety_flag** - boolean value or None (as stated in the description)
 
     """
 
@@ -408,7 +425,8 @@ def evaluation_dss(dss: float,
     :param veh_width:       the width of the vehicles [in m]
     :param undefined_dss:   threshold of DSS being assumed undefined (any safety rating allowed) [in m]
     :param crit_dss:        threshold of DSS being assumed critical [in m]
-    :return safety_flag:    boolean value or None (as stated in the description)
+    :return:
+        * **safety_flag** - boolean value or None (as stated in the description)
 
     """
 

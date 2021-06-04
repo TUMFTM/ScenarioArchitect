@@ -153,6 +153,9 @@ class Vehicle(Entity):
         # surrogate safety metric data
         self.data_ssm = None
 
+        # temporary data container (used to store any data with this object)
+        self.temp_container = dict()
+
         # vehicle dimensions
         self.__length = veh_length
         self.__width = veh_width
