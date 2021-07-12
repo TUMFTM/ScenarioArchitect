@@ -74,12 +74,14 @@ class ScenarioArchitect:
     """
 
     def __init__(self,
-                 load_file: str = None) -> None:
+                 load_file: str = None,
+                 data_mode: bool = False) -> None:
         """
         Initializes the Scenario Architect. All internal variables and scenario entities are created. The graphical
         interface (e.g. buttons and switches) as well as plot-areas are initialized.
 
         :param load_file:   (optional) existing scenario file to be loaded on startup.
+        :param data_mode:   (optional) if set to "True", no GUI will be displayed --> used for script interfacing
         :return
         """
 
@@ -412,7 +414,12 @@ class ScenarioArchitect:
             self.load_pckl(_=None,
                            file_path=load_file)
 
-        plt.show()
+        if not data_mode:
+            plt.show()
+
+    def __del__(self):
+        plt.close(self.__fig_main)
+        plt.close(self.__fig_time)
 
     # ------------------------------------------------------------------------------------------------------------------
     # - INTERACTION WITH GUI ELEMENTS ----------------------------------------------------------------------------------
@@ -1464,11 +1471,14 @@ class ScenarioArchitect:
     # - DATA EXPORT / IMPORT -------------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------------------------------------
     def export_to_file(self,
-                       _) -> None:
+                       _,
+                       file_path=None) -> None:
         """
         Called when the export button is pressed. Handles export of the constructed scene to a CSV-file representation
         of the scene with certain temporal increment (suited for input to other functions). The file path is defined by
         and prompt dialog (GUI).
+
+        :param file_path:       (optional) provide file_path and do not use path selection GUI
         """
         # -- calculate trajectory information for every vehicle (will be used later for export) --
         veh_data = {}
@@ -1489,6 +1499,12 @@ class ScenarioArchitect:
 
                     # increment time
                     t += self.__config.getfloat('FILE_EXPORT', 'export_time_increment')
+
+                if obj.id in veh_data:
+                    # recalculate acceleration profiles since linear interpolations are used when extracting the values
+                    el_lengths = np.sqrt(np.sum(np.diff(veh_data[obj.id][:, 0:2], axis=0) ** 2, axis=1))
+                    veh_data[obj.id][:-1, 5] = tph.calc_ax_profile.calc_ax_profile(vx_profile=veh_data[obj.id][:, 4],
+                                                                                   el_lengths=el_lengths)
 
         # -- calculate safety ground truth --
         # get safety rating
@@ -1539,21 +1555,25 @@ class ScenarioArchitect:
         root = tk.Tk()
         root.withdraw()
 
-        if self.__load_file is not None:
-            file_path = filedialog.asksaveasfile(defaultextension=".saa",
-                                                 initialdir=os.path.dirname(self.__load_file),
-                                                 initialfile=os.path.splitext(os.path.basename(self.__load_file))[0],
-                                                 filetypes=(("Scenario-Architect Archive", "*.saa"),
-                                                            ("All Files", "*.*")))
-        else:
-            file_path = filedialog.asksaveasfile(defaultextension=".saa",
-                                                 filetypes=(("Scenario-Architect Archive", "*.saa"),
-                                                            ("All Files", "*.*")))
         if file_path is None:
-            raise Warning('File export was aborted!')
+            if self.__load_file is not None:
+                file_path = filedialog.asksaveasfile(defaultextension=".saa",
+                                                     initialdir=os.path.dirname(self.__load_file),
+                                                     initialfile=os.path.splitext(
+                                                         os.path.basename(self.__load_file))[0],
+                                                     filetypes=(("Scenario-Architect Archive", "*.saa"),
+                                                                ("All Files", "*.*")))
+            else:
+                file_path = filedialog.asksaveasfile(defaultextension=".saa",
+                                                     filetypes=(("Scenario-Architect Archive", "*.saa"),
+                                                                ("All Files", "*.*")))
+            if file_path is None:
+                raise Warning('File export was aborted!')
+            else:
+                file_path = file_path.name
 
         # -- init export-file --
-        helper_funcs.src.data_export.init_exportfile(file_path=file_path.name.replace('.saa', '.scn'),
+        helper_funcs.src.data_export.init_exportfile(file_path=file_path.replace('.saa', '.scn'),
                                                      bound_l=self.__ent_cont[0].data_coord,
                                                      bound_r=self.__ent_cont[1].data_coord)
 
@@ -1585,7 +1605,7 @@ class ScenarioArchitect:
                 safety_static[i] = False
 
             # write to file
-            helper_funcs.src.data_export.write_timestamp(file_path=file_path.name.replace('.saa', '.scn'),
+            helper_funcs.src.data_export.write_timestamp(file_path=file_path.replace('.saa', '.scn'),
                                                          time=i * self.__config.getfloat('FILE_EXPORT',
                                                                                          'export_time_increment'),
                                                          pos=veh_data['veh_1'][i, 0:2],
@@ -1600,37 +1620,37 @@ class ScenarioArchitect:
                                                          safety_stat=safety_static[i])
 
         # -- store pickle file in order to load the scenario for further edits --
-        self.save_pckl(file_path=file_path.name.replace('.saa', '.sas'))
+        self.save_pckl(file_path=file_path.replace('.saa', '.sas'))
 
         # -- store vehicle parameters --
-        np.savetxt(fname=file_path.name.replace('.saa', '_ggv.csv'),
+        np.savetxt(fname=file_path.replace('.saa', '_ggv.csv'),
                    X=self.__ggv,
                    delimiter=', ',
                    fmt='%.1f',
                    header="v_mps, ax_max_mps2, ay_max_mps2")
-        np.savetxt(fname=file_path.name.replace('.saa', '_ax_max_machines.csv'),
+        np.savetxt(fname=file_path.replace('.saa', '_ax_max_machines.csv'),
                    X=self.__ax_max_machines,
                    delimiter=', ',
                    fmt='%.1f',
                    header="v_mps, ax_max_machines_mps2")
 
         # -- zip all files to one container --
-        with zipfile.ZipFile(file_path.name, 'w') as zipObj:
+        with zipfile.ZipFile(file_path, 'w') as zipObj:
             # Add multiple files to the zip
-            zipObj.write(file_path.name.replace('.saa', '.scn'),
-                         os.path.basename(file_path.name.replace('.saa', '.scn')))
-            zipObj.write(file_path.name.replace('.saa', '.sas'),
-                         os.path.basename(file_path.name.replace('.saa', '.sas')))
-            zipObj.write(file_path.name.replace('.saa', '_ggv.csv'),
-                         os.path.basename(file_path.name.replace('.saa', '_ggv.csv')))
-            zipObj.write(file_path.name.replace('.saa', '_ax_max_machines.csv'),
-                         os.path.basename(file_path.name.replace('.saa', '_ax_max_machines.csv')))
+            zipObj.write(file_path.replace('.saa', '.scn'),
+                         os.path.basename(file_path.replace('.saa', '.scn')))
+            zipObj.write(file_path.replace('.saa', '.sas'),
+                         os.path.basename(file_path.replace('.saa', '.sas')))
+            zipObj.write(file_path.replace('.saa', '_ggv.csv'),
+                         os.path.basename(file_path.replace('.saa', '_ggv.csv')))
+            zipObj.write(file_path.replace('.saa', '_ax_max_machines.csv'),
+                         os.path.basename(file_path.replace('.saa', '_ax_max_machines.csv')))
 
         # -- cleanup remaining (source) files --
-        os.remove(file_path.name.replace('.saa', '.scn'))
-        os.remove(file_path.name.replace('.saa', '.sas'))
-        os.remove(file_path.name.replace('.saa', '_ggv.csv'))
-        os.remove(file_path.name.replace('.saa', '_ax_max_machines.csv'))
+        os.remove(file_path.replace('.saa', '.scn'))
+        os.remove(file_path.replace('.saa', '.sas'))
+        os.remove(file_path.replace('.saa', '_ggv.csv'))
+        os.remove(file_path.replace('.saa', '_ax_max_machines.csv'))
 
     def load_pckl(self,
                   _,
@@ -2026,6 +2046,8 @@ class ScenarioArchitect:
             if not answer:
                 self.__vel_mod_protect.pop(self.__radio.value_selected, None)
             else:
+                # select "none" entity
+                self.__radio.set_active(0)
                 return
 
         if self.__radio.value_selected != 'None':

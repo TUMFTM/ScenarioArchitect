@@ -17,15 +17,42 @@ These scenarios can then be used for safety assessment metric evaluations or oth
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Getting Started:
 
-   start/main.rst
-   using_the_GUI/main.rst
+   start/overview.rst
+   start/installation.rst
+   start/launching.rst
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Using the GUI:
+
+   using_the_GUI/basics.rst
+   using_the_GUI/import_export.rst
+   using_the_GUI/workspace.rst
+   using_the_GUI/temporal.rst
+   using_the_GUI/safety.rst
+   using_the_GUI/config.rst
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Post Creation Usage:
+
    post_creation_usage/main.rst
 
+People Involved
+================
+
+Core Developer
+--------------
+
+- `Tim Stahl <tim.stahl@tum.de>`_
+
+
 Acknowledgements
-=============================================================
+----------------
 Regina Harrer contributed during her Project Thesis to the calculation of the Time to Collision (TTC) score.
+
 
 Contributions
 =============================================================
@@ -45,8 +72,3 @@ If you find our work useful in your research, please consider citing:
      author = {Stahl, Tim and Betz, Johannes},
      year = {2020}
    }
-
-Contact Information
-===================
-
-:Email: `tim.stahl@tum.de <tim.stahl@tum.de>`_

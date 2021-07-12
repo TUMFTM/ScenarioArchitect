@@ -17,11 +17,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 # -- Project information -----------------------------------------------------
 
 project = 'Scenario Architect'
-copyright = '2020, Tim Stahl'
+copyright = '2021, Tim Stahl'
 author = 'Tim Stahl'
 
 # The full version, including alpha/beta/rc tags
-release = '0.0.1'
+release = '0.0.2'
 
 
 # -- General configuration ---------------------------------------------------
@@ -31,8 +31,13 @@ release = '0.0.1'
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinx_automodapi.automodapi'
+    'sphinx_rtd_theme',
+    'sphinx.ext.intersphinx',
+    'sphinx.ext.ifconfig',
+    'sphinx.ext.viewcode',
+    'sphinx.ext.githubpages'
 ]
+
 
 autoclass_content = 'both'
 

@@ -201,6 +201,8 @@ class Vehicle(Entity):
         """
         Extract all available information about a given time stamp (interpolate between stored data points).
 
+        CAUTION: all entities are interpolated linearly - this may cause inaccuracies, especially for the acceleration
+
         :param t_in:        time-stamp to be returned (interpolated linearly between stored values)
         :returns (pos,      position [x, y]
                   heading,  heading angle
